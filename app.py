@@ -27,7 +27,7 @@ def load_config():
     """
     config = {}
     try:
-        with open("testing/config.yaml", "r") as file:
+        with open("config.yaml", "r") as file:
             config = yaml.safe_load(file)
             logging.info("Konfigurationsdatei erfolgreich geladen.")
     except FileNotFoundError:
