@@ -5,6 +5,7 @@ import requests
 import docker
 import threading
 import time
+import traceback
 from datetime import datetime
 
 
@@ -13,7 +14,7 @@ threads = []
 
 # Logging-Konfiguration
 logging.basicConfig(
-    level=logging.INFO,  # Ändere dies von INFO zu DEBUG
+    level=logging.DEBUG,  # Ändere dies von INFO zu DEBUG
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.FileHandler("monitor.log", mode="w"),
@@ -39,6 +40,7 @@ def load_config():
         "topic": os.getenv("NTFY_TOPIC", config.get("ntfy", {}).get("topic", "")),
         "token": os.getenv("NTFY_TOKEN", config.get("ntfy", {}).get("token", "")),
         "priority": os.getenv("NTFY_PRIORITY", config.get("ntfy", {}).get("priority", "default")),
+        "tags": os.getenv("NTFY_TAG", config.get("ntfy", {}).get("tags", "warning")),
     }
     config["containers"] = config.get("containers", [])
     #config["keywords"] = config.get("keywords", ["error", "warning", "critical"])
@@ -47,6 +49,7 @@ def load_config():
 def log_attachment(container):
     lines = 100
     file_name = f"last_{lines}_log-lines_from_{container.name}.txt"
+
     log_tail = container.logs(tail=lines).decode("utf-8")
     with open(file_name, "w") as file:  
         file.write(log_tail)
@@ -57,8 +60,16 @@ def send_ntfy_notification(config, container_name, message, file_name=None):
     Sendet eine Benachrichtigung an den ntfy-Server.
     """
     ntfy_url = config["ntfy"]["url"]
-    ntfy_topic = config.get("containers", {}).get("nextcloud", {}).get("ntfy-topic") or config.get("ntfy", {}).get("topic", "")
     ntfy_token = config["ntfy"]["token"]
+
+    if isinstance(config.get("containers").get(container_name, {}), dict):
+        ntfy_topic = config.get("containers", {}).get(container_name, {}).get("ntfy-topic") or config.get("ntfy", {}).get("topic", "")
+        ntfy_tags = config.get("containers", {}).get(container_name, {}).get("ntfy-tags") or config.get("ntfy", {}).get("tags", "warning")
+
+    else:
+        ntfy_topic = config.get("ntfy", {}).get("topic", "")
+        ntfy_tags = config.get("ntfy", {}).get("tags", "warning")
+   
 
     if not ntfy_url or not ntfy_topic or not ntfy_token:
         logging.error("Ntfy-Konfiguration fehlt. Benachrichtigung nicht möglich.")
@@ -66,10 +77,11 @@ def send_ntfy_notification(config, container_name, message, file_name=None):
 
     headers = {
         "Authorization": f"Bearer {ntfy_token}",
-        "Tags": f"warning",
+        "Tags": f"{ntfy_tags}",
+        "Title": f"{container_name}",
     }
 
-    message_text = f"[{container_name}] {message}"
+    message_text = f"{message}"
     
     try:
         if file_name:
@@ -81,6 +93,11 @@ def send_ntfy_notification(config, container_name, message, file_name=None):
                     data=file,
                     headers=headers
                 )
+            if os.path.exists(file_name):
+                os.remove(file_name)
+                logging.debug(f"Die Datei {file_name} wurde gelöscht.")
+            else:
+                logging.debug(f"Die Datei {file_name} existiert nicht.")
         else:
             # Wenn keine Datei angegeben wurde, sende nur die Nachricht
             response = requests.post(
@@ -101,11 +118,10 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
     """
     now = datetime.now()
     start_time = 0
-    containerr = container.name
-    print(f"contaaaaaainer: {containerr}")
     rate_limit = 10
 
     if isinstance(config["containers"][container.name], list):
+        logging.debug("LISTE: Container: %s", container.name)
         keywords.extend(config["containers"][container.name])
     
     if isinstance(config["containers"][container.name], dict):
@@ -113,7 +129,7 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
             keywords.extend(config["containers"][container.name]["no-log-file"])
             keywords_with_file.extend(config["containers"][container.name]["send-log-file"])
     else:
-        logging.error("Error in config: not a list or not a properly confifured dict with send-log-file and no-log-file attributes")
+        logging.error("Error in config: not a list or dict not  properly configured with send-log-file and no-log-file attributes")
 
     try:
         log_stream = container.logs(stream=True, follow=True, since=now)
@@ -154,6 +170,7 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
         logging.error("Fehler bei der Überwachung von %s: %s", container.name, e)
         # Füge hier zusätzliches Logging hinzu
         logging.error("Fehlerdetails: %s", str(e.__class__.__name__))
+        logging.debug(traceback.format_exc())
         
     logging.info("Monitoring stopped for Container: %s", container.name)
 
@@ -204,5 +221,6 @@ def monitor_docker_logs(config):
 if __name__ == "__main__":
     logging.info("Logsend started")
     config = load_config()
+    logging.debug(config)
     send_ntfy_notification(config, "Logsend:", "The programm is running and monitoring the logs of your selected containers.")
     monitor_docker_logs(config)
