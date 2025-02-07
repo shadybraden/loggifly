@@ -1,0 +1,14 @@
+containers:
+    audiobookshelf:
+        - user
+    hrconvert2:
+global-keywords:
+  - error
+  - login
+
+
+ntfy:
+  url: "http://192.168.178.184:8282"
+  topic: "logsend"
+  token: "token"
+
