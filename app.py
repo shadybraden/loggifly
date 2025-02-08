@@ -61,6 +61,7 @@ def load_config():
 
 def restart_docker_container():
     logging.debug("restart_docker_container function was called")
+    time.sleep(5)
     client = docker.from_env()
     container_id = os.getenv("HOSTNAME")  # Docker setzt HOSTNAME auf die Container-ID
     container = client.containers.get(container_id)
@@ -72,7 +73,7 @@ class ConfigHandler(FileSystemEventHandler):
     def on_modified(self, event):
         if not event.is_directory and event.src_path.endswith('config.yaml'):
             logging.debug("File has changed!")
-            logging.info("Restarting container now")
+            logging.info("Restarting container in 5s")
             restart_docker_container()
 
 def detect_config_changes():
@@ -90,12 +91,6 @@ def detect_config_changes():
     finally:
         observer.stop()
         observer.join()
-
-
-
-
-    observer.join()
-
 
 
 def log_attachment(container):
