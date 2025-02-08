@@ -1,10 +1,13 @@
 containers:
     audiobookshelf:
         - user
-    hrconvert2:
+    nextcoud:
+       - file
 global-keywords:
-  - error
-  - login
+  attachment:
+    - error
+  normal:
+    - login
 
 
 ntfy:

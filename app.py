@@ -10,6 +10,7 @@ import signal
 from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+from notifier import send_ntfy_notification
 
 
 threads = []
@@ -102,63 +103,6 @@ def log_attachment(container):
         file.write(log_tail)
         return file_name
 
-def send_ntfy_notification(config, container_name, message, file_name=None):
-    """
-    Sendet eine Benachrichtigung an den ntfy-Server.
-    """
-    ntfy_url = config["ntfy"]["url"]
-    ntfy_token = config["ntfy"]["token"]
-
-    if isinstance(config.get("containers").get(container_name, {}), dict):
-        ntfy_topic = config.get("containers", {}).get(container_name, {}).get("ntfy-topic") or config.get("ntfy", {}).get("topic", "")
-        ntfy_tags = config.get("containers", {}).get(container_name, {}).get("ntfy-tags") or config.get("ntfy", {}).get("tags", "warning")
-
-    else:
-        ntfy_topic = config.get("ntfy", {}).get("topic", "")
-        ntfy_tags = config.get("ntfy", {}).get("tags", "warning")
-   
-
-    if not ntfy_url or not ntfy_topic or not ntfy_token:
-        logging.error("Ntfy-Konfiguration fehlt. Benachrichtigung nicht möglich.")
-        return
-
-    headers = {
-        "Authorization": f"Bearer {ntfy_token}",
-        "Tags": f"{ntfy_tags}",
-        "Title": f"{container_name}",
-    }
-
-    message_text = f"{message}"
-    
-    try:
-        if file_name:
-            # Wenn eine Datei angegeben wurde, sende diese
-            headers["Filename"] = file_name
-            with open(file_name, "rb") as file:
-                response = requests.post(
-                    f"{ntfy_url}/{ntfy_topic}", 
-                    data=file,
-                    headers=headers
-                )
-            if os.path.exists(file_name):
-                os.remove(file_name)
-                logging.debug(f"Die Datei {file_name} wurde gelöscht.")
-            else:
-                logging.debug(f"Die Datei {file_name} existiert nicht.")
-        else:
-            # Wenn keine Datei angegeben wurde, sende nur die Nachricht
-            response = requests.post(
-                f"{ntfy_url}/{ntfy_topic}", 
-                data=message_text,
-                headers=headers
-            )
-        if response.status_code == 200:
-            logging.info("Ntfy-Notification sent successfully: %s", message)
-        else:
-            logging.error("Error while trying to send ntfy-notification: %s", response.text)
-    except requests.RequestException as e:
-        logging.error("Error while trying to connect to ntfy: %s", e)
-
 def monitor_container_logs(config, container, keywords, keywords_with_file, timeout=30):
     """
     Überwacht die Logs eines Containers und sendet Benachrichtigungen bei Schlüsselwörtern.
@@ -169,13 +113,14 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
 
     if isinstance(config["containers"][container.name], list):
         keywords.extend(config["containers"][container.name])
-    
-    if isinstance(config["containers"][container.name], dict):
-        if "send-log-file" and "no-log-file" in config["containers"][container.name]:
-            keywords.extend(config["containers"][container.name]["no-log-file"])
-            keywords_with_file.extend(config["containers"][container.name]["send-log-file"])
+    elif isinstance(config["containers"][container.name], dict):
+        if "attachment" in config["containers"][container.name]:
+            keywords_with_file.extend(config["containers"][container.name]["attachment"])
+
+        if "normal" in config["containers"][container.name]:
+            keywords.extend(config["containers"][container.name]["normal"])
     else:
-        logging.error("Error in config: not a list or dict not  properly configured with send-log-file and no-log-file attributes")
+        logging.error("Error in config: not a list or dict not  properly configured with attachment and normal attributes")
 
     try:
         log_stream = container.logs(stream=True, follow=True, since=now)
@@ -187,23 +132,22 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
                 #logging.debug("[%s] %s", container.name, log_line_decoded)
 
                 if log_line_decoded:
-                    while not shutdown_event.is_set():
-                        # keywords with file 
-                        if any(str(keyword) in log_line_decoded for keyword in keywords_with_file):
-                            if time.time() - start_time >= rate_limit:
-                                logging.info(f"waiting {start_time - time.time()}")
-                                logging.info("Keyword (with attachment) was found in %s: %s", container.name, log_line_decoded)
-                                file_name = log_attachment(container)
-                                send_ntfy_notification(config, container.name, log_line_decoded, file_name)
-                                start_time = time.time()
-                            # keywords without file 
-                        if any(str(keyword) in log_line_decoded for keyword in keywords):
-                            if time.time() - start_time >= rate_limit:
-                                logging.info(f"waiting {start_time - time.time()}")
-                                logging.info("Keyword was found in %s: %s", container.name, log_line_decoded)
-                                send_ntfy_notification(config, container.name, log_line_decoded)
-                                time.sleep(rate_limit)
-                                start_time = time.time()
+                    # keywords with file 
+                    if any(str(keyword) in log_line_decoded for keyword in keywords_with_file):
+                        if time.time() - start_time >= rate_limit:
+                            logging.info(f"waiting {start_time - time.time()}")
+                            logging.info("Keyword (with attachment) was found in %s: %s", container.name, log_line_decoded)
+                            file_name = log_attachment(container)
+                            send_ntfy_notification(config, container.name, log_line_decoded, file_name)
+                            start_time = time.time()
+                        # keywords without file 
+                    if any(str(keyword) in log_line_decoded for keyword in keywords):
+                        if time.time() - start_time >= rate_limit:
+                            logging.info(f"waiting {start_time - time.time()}")
+                            logging.info("Keyword was found in %s: %s", container.name, log_line_decoded)
+                            send_ntfy_notification(config, container.name, log_line_decoded)
+                            time.sleep(rate_limit)
+                            start_time = time.time()
 
 
 
@@ -230,11 +174,14 @@ def monitor_docker_logs(config):
         global_keywords = config["global-keywords"]
         
     elif isinstance(config.get("global-keywords"), dict):
-        if "send-log-file" and "no-log-file" in config["global-keywords"]:
-            global_keywords = (config["global-keywords"]["no-log-file"])
-            global_keywords_with_file = (config["global-keywords"]["send-log-file"])
-        else:
-            logging.error("Error in config: global-keywords: 'send-log-file' or 'no-log-file' not properly configured")
+        if "attachment" in config["global-keywords"]:
+            global_keywords_with_file = (config["global-keywords"]["attachment"])
+        if "normal" in config["global-keywords"]:
+            global_keywords = (config["global-keywords"]["normal"])
+        if not "attachment" or "normal" in config["global-keywords"]:
+            logging.error("Error in config: global-keywords: 'attachment' or 'normal' not properly configured")
+
+
 
     client = docker.from_env()
     monitored_containers = [ ]
