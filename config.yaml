@@ -15,3 +15,5 @@ ntfy:
   topic: "logsend"
   token: "token"
 
+settings:
+  log-level: INFO

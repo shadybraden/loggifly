@@ -15,6 +15,21 @@ from notifier import send_ntfy_notification
 threads = []
 shutdown_event = threading.Event()
 
+def set_logging(config):
+    log_level = os.getenv("LOG_LEVEL", config.get("settings", {}).get("log-level", "INFO"))
+    logging.getLogger().handlers.clear()
+    logging.basicConfig(
+        level = getattr(logging, log_level.upper(), logging.INFO),
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler("monitor.log", mode="w"),
+            logging.StreamHandler()
+        ]
+    )
+    logging.info(f"Log-Level set to {log_level}")
+    logging.debug("This is a Debug-Message")
+    logging.info("This is a Info-Message")
+    logging.warning("This is a Warning-Message")
 
 def handle_signal(signum, frame):
     send_ntfy_notification(config, "Logsend:", "The programm is restarting.")
@@ -25,15 +40,7 @@ signal.signal(signal.SIGTERM, handle_signal)
 signal.signal(signal.SIGINT, handle_signal)
 
 
-# Logging-Konfiguration
-logging.basicConfig(
-    level=logging.DEBUG,  # Ändere dies von INFO zu DEBUG
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler("monitor.log", mode="w"),
-        logging.StreamHandler()
-    ]
-)
+
 
 def load_config():
     """
@@ -113,16 +120,21 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
     rate_limit = 10
     local_keywords = keywords.copy()
     local_keywords_with_file = keywords_with_file.copy()
+
+
     if isinstance(config["containers"][container.name], list):
         local_keywords.extend(config["containers"][container.name])
     elif isinstance(config["containers"][container.name], dict):
         if "attachment" in config["containers"][container.name]:
             local_keywords_with_file.extend(config["containers"][container.name]["attachment"])
-
         if "normal" in config["containers"][container.name]:
             local_keywords.extend(config["containers"][container.name]["normal"])
     else:
         logging.error("Error in config: not a list or dict not  properly configured with attachment and normal attributes")
+
+    time_per_keyword = { }
+    for keyword in local_keywords + local_keywords_with_file:
+        time_per_keyword[keyword] = 0
 
     try:
         log_stream = container.logs(stream=True, follow=True, since=now)
@@ -132,31 +144,24 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
             try:
                 log_line_decoded = str(log_line.decode("utf-8")).strip()
                 #logging.debug("[%s] %s", container.name, log_line_decoded)
-
                 if log_line_decoded:
                     # keywords with file 
-                    #if any(str(keyword) in log_line_decoded for keyword in local_keywords_with_file):
                     for keyword in local_keywords_with_file:
-                        if str(keyword) in log_line_decoded:
-                            
-                        #if time.time() - start_time >= rate_limit:
-                            logging.info(f"waiting {start_time - time.time()}")
-                            logging.info(f"Keyword (with attachment) '{keyword}' was found in {container.name}: {log_line_decoded}")                            
-                            file_name = log_attachment(container)
-                            send_ntfy_notification(config, container.name, log_line_decoded, file_name)
-                            start_time = time.time()
-                        # keywords without file 
-                   # if any(str(keyword) in log_line_decoded for keyword in local_keywords):
-                     #   if time.time() - start_time >= rate_limit:
+                        if time.time() - time_per_keyword[keyword] >= rate_limit:
+                            if str(keyword) in log_line_decoded:
+                                logging.info(f"waiting {start_time - time.time()}")
+                                logging.info(f"Keyword (with attachment) '{keyword}' was found in {container.name}: {log_line_decoded}")                            
+                                file_name = log_attachment(container)
+                                send_ntfy_notification(config, container.name, log_line_decoded, file_name)
+                                time_per_keyword[keyword] = time.time()
+                    # keywords without file 
                     for keyword in local_keywords:
-                        if str(keyword) in log_line_decoded:
-                            logging.info(f"waiting {start_time - time.time()}")
-                            logging.info(f"Keyword '{keyword}' was found in {container.name}: {log_line_decoded}")                            
-                            send_ntfy_notification(config, container.name, log_line_decoded)
-                            time.sleep(rate_limit)
-                            start_time = time.time()
-
-
+                        if time.time() - time_per_keyword[keyword] >= rate_limit:
+                            if str(keyword) in log_line_decoded:
+                                logging.info(f"waiting {start_time - time.time()}")
+                                logging.info(f"Keyword '{keyword}' was found in {container.name}: {log_line_decoded}")                            
+                                send_ntfy_notification(config, container.name, log_line_decoded)
+                                time_per_keyword[keyword] = time.time()
 
             except UnicodeDecodeError:
                 logging.warning("Fehler beim Dekodieren einer Log-Zeile von %s", container.name)
@@ -208,7 +213,7 @@ def monitor_docker_logs(config):
     threads.append(thread_file_change)
     thread_file_change.start()
 
-    logging.info("Monitoring started for all selected containers. Monitoring docker events now")
+    logging.info("Monitoring started for all selected containers. Monitoring docker events now to watch for new containers")
     for event in client.events(decode=True, filters={"event": "start"}):
         id = event["Actor"]["ID"]
         container_from_event = client.containers.get(id)
@@ -225,6 +230,7 @@ def monitor_docker_logs(config):
 if __name__ == "__main__":
     logging.info("Logsend started")
     config = load_config()
+    set_logging(config)
     logging.debug(config)
     send_ntfy_notification(config, "Logsend:", "The programm is running and monitoring the logs of your selected containers.")
     monitor_docker_logs(config)
