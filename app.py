@@ -6,10 +6,22 @@ import docker
 import threading
 import time
 import traceback
+import signal
 from datetime import datetime
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 
 
 threads = []
+shutdown_event = threading.Event()
+
+
+def handle_signal(signum, frame):
+    logging.info(f"Signal {signum} received. shutting down...")
+    shutdown_event.set() 
+
+signal.signal(signal.SIGTERM, handle_signal)
+signal.signal(signal.SIGINT, handle_signal)
 
 
 # Logging-Konfiguration
@@ -45,6 +57,46 @@ def load_config():
     config["containers"] = config.get("containers", [])
     #config["keywords"] = config.get("keywords", ["error", "warning", "critical"])
     return config
+
+
+def restart_docker_container():
+    logging.debug("restart_docker_container function was called")
+    client = docker.from_env()
+    container_id = os.getenv("HOSTNAME")  # Docker setzt HOSTNAME auf die Container-ID
+    container = client.containers.get(container_id)
+    logging.debug(f"container_id: {container_id}, container: {container}")
+    container.restart()
+
+
+class ConfigHandler(FileSystemEventHandler):
+    def on_modified(self, event):
+        if not event.is_directory and event.src_path.endswith('config.yaml'):
+            logging.debug("File has changed!")
+            logging.info("Restarting container now")
+            restart_docker_container()
+
+def detect_config_changes():
+    logging.debug("watching for config changes")
+    path = "/app/config.yaml"  # Pfad zur config.yaml
+    event_handler = ConfigHandler()
+    observer = Observer()
+    observer.schedule(event_handler, path=path, recursive=False)    
+    observer.start()
+    try:
+        while not shutdown_event.is_set():
+            observer.join(1)
+    except Exception as e:
+        logging.error(f"Error: {e}")
+    finally:
+        observer.stop()
+        observer.join()
+
+
+
+
+    observer.join()
+
+
 
 def log_attachment(container):
     lines = 100
@@ -121,7 +173,6 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
     rate_limit = 10
 
     if isinstance(config["containers"][container.name], list):
-        logging.debug("LISTE: Container: %s", container.name)
         keywords.extend(config["containers"][container.name])
     
     if isinstance(config["containers"][container.name], dict):
@@ -137,28 +188,27 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
 
         for log_line in log_stream:
             try:
-                # Stelle sicher, dass log_line_decoded ein String ist
                 log_line_decoded = str(log_line.decode("utf-8")).strip()
-                #logging.info("[%s] %s", container.name, log_line_decoded)
+                #logging.debug("[%s] %s", container.name, log_line_decoded)
 
-                # Prüfe ob log_line_decoded nicht leer ist
                 if log_line_decoded:
-                    # Schlüsselwörter mit file überprüfen
-                    if any(str(keyword) in log_line_decoded for keyword in keywords_with_file):
-                        if time.time() - start_time >= rate_limit:
-                            logging.info(f"waiting {start_time - time.time()}")
-                            logging.info("Keyword (with attachment) was found in %s: %s", container.name, log_line_decoded)
-                            file_name = log_attachment(container)
-                            send_ntfy_notification(config, container.name, log_line_decoded, file_name)
-                            start_time = time.time()
-                        # Schlüsselwörter ohne file überprüfen
-                    if any(str(keyword) in log_line_decoded for keyword in keywords):
-                        if time.time() - start_time >= rate_limit:
-                            logging.info(f"waiting {start_time - time.time()}")
-                            logging.info("Keyword was found in %s: %s", container.name, log_line_decoded)
-                            send_ntfy_notification(config, container.name, log_line_decoded)
-                            time.sleep(rate_limit)
-                            start_time = time.time()
+                    while not shutdown_event.is_set():
+                        # keywords with file 
+                        if any(str(keyword) in log_line_decoded for keyword in keywords_with_file):
+                            if time.time() - start_time >= rate_limit:
+                                logging.info(f"waiting {start_time - time.time()}")
+                                logging.info("Keyword (with attachment) was found in %s: %s", container.name, log_line_decoded)
+                                file_name = log_attachment(container)
+                                send_ntfy_notification(config, container.name, log_line_decoded, file_name)
+                                start_time = time.time()
+                            # keywords without file 
+                        if any(str(keyword) in log_line_decoded for keyword in keywords):
+                            if time.time() - start_time >= rate_limit:
+                                logging.info(f"waiting {start_time - time.time()}")
+                                logging.info("Keyword was found in %s: %s", container.name, log_line_decoded)
+                                send_ntfy_notification(config, container.name, log_line_decoded)
+                                time.sleep(rate_limit)
+                                start_time = time.time()
 
 
 
@@ -205,6 +255,10 @@ def monitor_docker_logs(config):
         threads.append(thread)
         thread.start()
 
+    thread_file_change = threading.Thread(target=detect_config_changes)
+    threads.append(thread_file_change)
+    thread_file_change.start()
+
     logging.info("Monitoring started for all selected containers. Monitoring docker events now")
     for event in client.events(decode=True, filters={"event": "start"}):
         id = event["Actor"]["ID"]
@@ -215,6 +269,7 @@ def monitor_docker_logs(config):
             thread.start()
             logging.info("Monitoring new container: %s", container_from_event.name)
 
+
     for thread in threads:
         thread.join()
 
@@ -224,3 +279,4 @@ if __name__ == "__main__":
     logging.debug(config)
     send_ntfy_notification(config, "Logsend:", "The programm is running and monitoring the logs of your selected containers.")
     monitor_docker_logs(config)
+
