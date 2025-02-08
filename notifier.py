@@ -3,6 +3,18 @@ import logging
 import os
 import urllib.parse
 
+
+logging.basicConfig(
+    level=logging.DEBUG,  # Ändere dies von INFO zu DEBUG
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("monitor.log", mode="w"),
+        logging.StreamHandler()
+    ]
+)
+
+
+
 def send_ntfy_notification(config, container_name, message, file_name=None):
     """
     Sendet eine Benachrichtigung an den ntfy-Server.
@@ -34,6 +46,7 @@ def send_ntfy_notification(config, container_name, message, file_name=None):
     try:
         if file_name:
             # Wenn eine Datei angegeben wurde, sende diese
+            logging.debug("Message WITH file is being sent")
             headers["Filename"] = file_name
             with open(file_name, "rb") as file:
                 response = requests.post(
@@ -48,6 +61,8 @@ def send_ntfy_notification(config, container_name, message, file_name=None):
                 logging.debug(f"Die Datei {file_name} existiert nicht.")
         else:
             # Wenn keine Datei angegeben wurde, sende nur die Nachricht
+            logging.debug("Message WITHOUT file is being sent")
+
             response = requests.post(
                 f"{ntfy_url}/{ntfy_topic}", 
                 data=message_text,

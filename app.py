@@ -77,6 +77,7 @@ class ConfigHandler(FileSystemEventHandler):
             logging.info("Restarting container in 5s")
             restart_docker_container()
 
+
 def detect_config_changes():
     logging.debug("watching for config changes")
     path = "/app/config.yaml"  # Pfad zur config.yaml
@@ -95,7 +96,7 @@ def detect_config_changes():
 
 
 def log_attachment(container):
-    lines = 100
+    lines = 50
     file_name = f"last_{lines}_log-lines_from_{container.name}.txt"
 
     log_tail = container.logs(tail=lines).decode("utf-8")
@@ -111,12 +112,12 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
     start_time = 0
     rate_limit = 10
     local_keywords = keywords.copy()
-    local_keyword_with_file = keywords_with_file.copy()
+    local_keywords_with_file = keywords_with_file.copy()
     if isinstance(config["containers"][container.name], list):
         local_keywords.extend(config["containers"][container.name])
     elif isinstance(config["containers"][container.name], dict):
         if "attachment" in config["containers"][container.name]:
-            local_keyword_with_file.extend(config["containers"][container.name]["attachment"])
+            local_keywords_with_file.extend(config["containers"][container.name]["attachment"])
 
         if "normal" in config["containers"][container.name]:
             local_keywords.extend(config["containers"][container.name]["normal"])
@@ -134,18 +135,23 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
 
                 if log_line_decoded:
                     # keywords with file 
-                    if any(str(keyword) in log_line_decoded for keyword in local_keyword_with_file):
-                        if time.time() - start_time >= rate_limit:
+                    #if any(str(keyword) in log_line_decoded for keyword in local_keywords_with_file):
+                    for keyword in local_keywords_with_file:
+                        if str(keyword) in log_line_decoded:
+                            
+                        #if time.time() - start_time >= rate_limit:
                             logging.info(f"waiting {start_time - time.time()}")
-                            logging.info("Keyword (with attachment) was found in %s: %s", container.name, log_line_decoded)
+                            logging.info(f"Keyword (with attachment) '{keyword}' was found in {container.name}: {log_line_decoded}")                            
                             file_name = log_attachment(container)
                             send_ntfy_notification(config, container.name, log_line_decoded, file_name)
                             start_time = time.time()
                         # keywords without file 
-                    if any(str(keyword) in log_line_decoded for keyword in local_keywords):
-                        if time.time() - start_time >= rate_limit:
+                   # if any(str(keyword) in log_line_decoded for keyword in local_keywords):
+                     #   if time.time() - start_time >= rate_limit:
+                    for keyword in local_keywords:
+                        if str(keyword) in log_line_decoded:
                             logging.info(f"waiting {start_time - time.time()}")
-                            logging.info("Keyword was found in %s: %s", container.name, log_line_decoded)
+                            logging.info(f"Keyword '{keyword}' was found in {container.name}: {log_line_decoded}")                            
                             send_ntfy_notification(config, container.name, log_line_decoded)
                             time.sleep(rate_limit)
                             start_time = time.time()
