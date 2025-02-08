@@ -1,7 +1,6 @@
 import os
 import yaml
 import logging
-import requests
 import docker
 import threading
 import time
@@ -18,6 +17,7 @@ shutdown_event = threading.Event()
 
 
 def handle_signal(signum, frame):
+    send_ntfy_notification(config, "Logsend:", "The programm is restarting.")
     logging.info(f"Signal {signum} received. shutting down...")
     shutdown_event.set() 
 
@@ -110,15 +110,16 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
     now = datetime.now()
     start_time = 0
     rate_limit = 10
-
+    local_keywords = keywords.copy()
+    local_keyword_with_file = keywords_with_file.copy()
     if isinstance(config["containers"][container.name], list):
-        keywords.extend(config["containers"][container.name])
+        local_keywords.extend(config["containers"][container.name])
     elif isinstance(config["containers"][container.name], dict):
         if "attachment" in config["containers"][container.name]:
-            keywords_with_file.extend(config["containers"][container.name]["attachment"])
+            local_keyword_with_file.extend(config["containers"][container.name]["attachment"])
 
         if "normal" in config["containers"][container.name]:
-            keywords.extend(config["containers"][container.name]["normal"])
+            local_keywords.extend(config["containers"][container.name]["normal"])
     else:
         logging.error("Error in config: not a list or dict not  properly configured with attachment and normal attributes")
 
@@ -133,7 +134,7 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
 
                 if log_line_decoded:
                     # keywords with file 
-                    if any(str(keyword) in log_line_decoded for keyword in keywords_with_file):
+                    if any(str(keyword) in log_line_decoded for keyword in local_keyword_with_file):
                         if time.time() - start_time >= rate_limit:
                             logging.info(f"waiting {start_time - time.time()}")
                             logging.info("Keyword (with attachment) was found in %s: %s", container.name, log_line_decoded)
@@ -141,7 +142,7 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
                             send_ntfy_notification(config, container.name, log_line_decoded, file_name)
                             start_time = time.time()
                         # keywords without file 
-                    if any(str(keyword) in log_line_decoded for keyword in keywords):
+                    if any(str(keyword) in log_line_decoded for keyword in local_keywords):
                         if time.time() - start_time >= rate_limit:
                             logging.info(f"waiting {start_time - time.time()}")
                             logging.info("Keyword was found in %s: %s", container.name, log_line_decoded)
