@@ -12,7 +12,6 @@ from watchdog.events import FileSystemEventHandler
 from notifier import send_ntfy_notification
 
 
-threads = []
 shutdown_event = threading.Event()
 
 def set_logging(config):
@@ -120,18 +119,20 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
     rate_limit = 10
     local_keywords = keywords.copy()
     local_keywords_with_file = keywords_with_file.copy()
+    container_name = container.name
 
-    if config["containers"][container.name] is None:
-        config["containers"][container.name] = {}
-    elif isinstance(config["containers"][container.name], list):
+    config["containers"] = {
+        container_name: config.get("containers", {}).get(container_name, {})
+    }
+    if isinstance(config["containers"][container.name], list):
         local_keywords.extend(config["containers"][container.name])
     elif isinstance(config["containers"][container.name], dict):
-        if "attachment" in config["containers"][container.name]:
-            local_keywords_with_file.extend(config["containers"][container.name]["attachment"])
-        if "normal" in config["containers"][container.name]:
-            local_keywords.extend(config["containers"][container.name]["normal"])
+        if "keywords_with_attachment" in config["containers"][container.name]:
+            local_keywords_with_file.extend(config["containers"][container.name]["keywords_with_attachment"])
+        if "keywords" in config["containers"][container.name]:
+            local_keywords.extend(config["containers"][container.name]["keywords"])
     else:
-        logging.error("Error in config: not a list or dict not  properly configured with attachment and normal attributes")
+        logging.error("Error in config: not a list or dict not  properly configured with keywords_with_attachment and keywords attributes")
 
     time_per_keyword = { }
     for keyword in local_keywords + local_keywords_with_file:
@@ -180,32 +181,37 @@ def monitor_docker_logs(config):
     """
     Erstellt Threads zur Überwachung der Container-Logs.
     """
-    global threads
+    threads = []
     global_keywords = [ ]
     global_keywords_with_file = [ ]
-    if isinstance(config.get("global-keywords"), list):
-        global_keywords = config["global-keywords"]
+    if isinstance(config.get("global_keywords"), list):
+        global_keywords = config["global_keywords"]
         
-    elif isinstance(config.get("global-keywords"), dict):
-        if "attachment" in config["global-keywords"]:
-            global_keywords_with_file = (config["global-keywords"]["attachment"])
-        if "normal" in config["global-keywords"]:
-            global_keywords = (config["global-keywords"]["normal"])
-        if not "attachment" or "normal" in config["global-keywords"]:
-            logging.error("Error in config: global-keywords: 'attachment' or 'normal' not properly configured")
+    elif isinstance(config.get("global_keywords"), dict):
+        if "keywords_with_attachment" in config["global_keywords"]:
+            global_keywords_with_file = (config["global_keywords"]["attachment"])
+        if "keywords" in config["global_keywords"]:
+            global_keywords = (config["global_keywords"]["keywords"])
+        if not "keywords_with_attachment" or "keywords" in config["global_keywords"]:
+            logging.error("Error in config: global_keywords: 'attachment' or 'keywords' not properly configured")
 
 
 
     client = docker.from_env()
-    monitored_containers = [ ]
+    selected_containers = [ ]
     for container in config["containers"]:
-        monitored_containers.append(container)
+        selected_containers.append(container)
     containers = client.containers.list()
-    selected_containers = [c for c in containers if c.name in monitored_containers]
 
-    logging.info("Ausgewählte Container zur Überwachung: %s", [c.name for c in selected_containers])
+    containers_to_monitor = [c for c in containers if c.name in selected_containers]
 
-    for container in selected_containers:
+    unmonitored_containers = [c for c in selected_containers if c not in [c.name for c in containers_to_monitor]]
+
+    logging.info(f"These containers are being monitored: {[c.name for c in containers_to_monitor]} \n \
+                    These containers from your config are not running {unmonitored_containers}")
+
+    send_ntfy_notification(config, "Logsend", f"Monitored Containers: {[c.name for c in containers_to_monitor]}, \n\n Containers not running: {unmonitored_containers}")
+    for container in containers_to_monitor:
         thread = threading.Thread(target=monitor_container_logs, args=(config, container, global_keywords, global_keywords_with_file, None))
         threads.append(thread)
         thread.start()
@@ -218,7 +224,7 @@ def monitor_docker_logs(config):
     for event in client.events(decode=True, filters={"event": "start"}):
         id = event["Actor"]["ID"]
         container_from_event = client.containers.get(id)
-        if container_from_event.name in monitored_containers:
+        if container_from_event.name in selected_containers:
             thread = threading.Thread(target=monitor_container_logs, args=(config, container_from_event, global_keywords, global_keywords_with_file, None))
             threads.append(thread)
             thread.start()
@@ -233,6 +239,6 @@ if __name__ == "__main__":
     config = load_config()
     set_logging(config)
     logging.debug(config)
-    send_ntfy_notification(config, "Logsend:", "The programm is running and monitoring the logs of your selected containers.", None)
+    send_ntfy_notification(config, "Logsend:", "The programm is running and monitoring the logs of your selected containers.")
     monitor_docker_logs(config)
 

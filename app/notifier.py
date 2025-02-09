@@ -15,7 +15,7 @@ logging.basicConfig(
 
 
 
-def send_ntfy_notification(config, container_name, message, keyword, file_name=None):
+def send_ntfy_notification(config, container_name, message, keyword=None, file_name=None):
     """
     Sendet eine Benachrichtigung an den ntfy-Server.
     """
@@ -23,8 +23,8 @@ def send_ntfy_notification(config, container_name, message, keyword, file_name=N
     ntfy_token = config["ntfy"]["token"]
 
     if isinstance(config.get("containers").get(container_name, {}), dict):
-        ntfy_topic = config.get("containers", {}).get(container_name, {}).get("ntfy-topic") or config.get("ntfy", {}).get("topic", "")
-        ntfy_tags = config.get("containers", {}).get(container_name, {}).get("ntfy-tags") or config.get("ntfy", {}).get("tags", "warning")
+        ntfy_topic = config.get("containers", {}).get(container_name, {}).get("ntfy_topic") or config.get("ntfy", {}).get("topic", "")
+        ntfy_tags = config.get("containers", {}).get(container_name, {}).get("ntfy_tags") or config.get("ntfy", {}).get("tags", "warning")
 
     # else:
     #     ntfy_topic = config.get("ntfy", {}).get("topic", "")
@@ -38,10 +38,10 @@ def send_ntfy_notification(config, container_name, message, keyword, file_name=N
     headers = {
         "Authorization": f"Bearer {ntfy_token}",
         "Tags": f"{ntfy_tags}",
-        "Icon": "icon.png"
+        "Icon": "https://raw.githubusercontent.com/clemcer/logsend/refs/heads/main/icon.png?token=GHSAT0AAAAAAC5ITTW676EADGP3AAR7VE7AZ5IWJOQ"
     }
 
-    if keyword is not None:
+    if keyword is None:
         headers["Title"] = f"{container_name}"
     else:
         headers["Title"] = f"'{keyword}' found in {container_name}"

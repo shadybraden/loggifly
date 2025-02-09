@@ -1,12 +1,15 @@
 containers:
     audiobookshelf:
+    ntfy_tags: book
+    ntfy_topic: audiobookshelf
         - user
     nextcoud:
        - file
+
 global-keywords:
-  attachment:
+  keywords_with_attachment:
     - error
-  normal:
+  keywords:
     - login
 
 

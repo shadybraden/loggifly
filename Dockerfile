@@ -16,7 +16,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Kopiere die restlichen Dateien (Skript und Konfiguration) in den Container
 COPY app/app.py .
-COPY app/icon.png .
 COPY app/notifier.py .
 COPY config.yaml .
 
