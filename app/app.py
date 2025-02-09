@@ -121,8 +121,9 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
     local_keywords = keywords.copy()
     local_keywords_with_file = keywords_with_file.copy()
 
-
-    if isinstance(config["containers"][container.name], list):
+    if config["containers"][container.name] is None:
+        config["containers"][container.name] = {}
+    elif isinstance(config["containers"][container.name], list):
         local_keywords.extend(config["containers"][container.name])
     elif isinstance(config["containers"][container.name], dict):
         if "attachment" in config["containers"][container.name]:
@@ -152,7 +153,7 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
                                 logging.info(f"waiting {start_time - time.time()}")
                                 logging.info(f"Keyword (with attachment) '{keyword}' was found in {container.name}: {log_line_decoded}")                            
                                 file_name = log_attachment(container)
-                                send_ntfy_notification(config, container.name, log_line_decoded, file_name)
+                                send_ntfy_notification(config, container.name, log_line_decoded, keyword, file_name)
                                 time_per_keyword[keyword] = time.time()
                     # keywords without file 
                     for keyword in local_keywords:
@@ -160,7 +161,7 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
                             if str(keyword) in log_line_decoded:
                                 logging.info(f"waiting {start_time - time.time()}")
                                 logging.info(f"Keyword '{keyword}' was found in {container.name}: {log_line_decoded}")                            
-                                send_ntfy_notification(config, container.name, log_line_decoded)
+                                send_ntfy_notification(config, container.name, log_line_decoded, keyword)
                                 time_per_keyword[keyword] = time.time()
 
             except UnicodeDecodeError:
@@ -232,6 +233,6 @@ if __name__ == "__main__":
     config = load_config()
     set_logging(config)
     logging.debug(config)
-    send_ntfy_notification(config, "Logsend:", "The programm is running and monitoring the logs of your selected containers.")
+    send_ntfy_notification(config, "Logsend:", "The programm is running and monitoring the logs of your selected containers.", None)
     monitor_docker_logs(config)
 
