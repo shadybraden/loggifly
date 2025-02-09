@@ -15,7 +15,7 @@ from notifier import send_ntfy_notification
 shutdown_event = threading.Event()
 
 def set_logging(config):
-    log_level = os.getenv("LOG_LEVEL", config.get("settings", {}).get("log-level", "INFO"))
+    log_level = os.getenv("LOG_LEVEL", config.get("settings", {}).get("log-level", "INFO")).upper()
     logging.getLogger().handlers.clear()
     logging.basicConfig(
         level = getattr(logging, log_level.upper(), logging.INFO),
@@ -114,15 +114,17 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
     """
     Überwacht die Logs eines Containers und sendet Benachrichtigungen bei Schlüsselwörtern.
     """
+    client = docker.from_env()
     now = datetime.now()
     start_time = 0
-    rate_limit = 10
+    keyword_notification_cooldown = os.getenv("keyword_notification_cooldown", config.get("settings", {}).get("keyword_notification_cooldown", 10))
+    logging.debug(f"keyword_notification_cooldown: {keyword_notification_cooldown}")
     local_keywords = keywords.copy()
     local_keywords_with_file = keywords_with_file.copy()
     container_name = container.name
 
     config["containers"] = {
-        container_name: config.get("containers", {}).get(container_name, {})
+        container_name: config.get("containers", {}).get(container_name, [])
     }
     if isinstance(config["containers"][container.name], list):
         local_keywords.extend(config["containers"][container.name])
@@ -143,13 +145,17 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
         logging.info("Monitoring for Container started: %s", container.name)
 
         for log_line in log_stream:
+            if shutdown_event.is_set():
+                logging.debug(f"Noticed that shutdown_event.is_set in monitor_container_logs() function for {container_name}. Closing client now")
+                client.close()
+                break
             try:
                 log_line_decoded = str(log_line.decode("utf-8")).strip()
                 #logging.debug("[%s] %s", container.name, log_line_decoded)
                 if log_line_decoded:
                     # keywords with file 
                     for keyword in local_keywords_with_file:
-                        if time.time() - time_per_keyword[keyword] >= rate_limit:
+                        if time.time() - time_per_keyword[keyword] >= int(keyword_notification_cooldown):
                             if str(keyword) in log_line_decoded:
                                 logging.info(f"waiting {start_time - time.time()}")
                                 logging.info(f"Keyword (with attachment) '{keyword}' was found in {container.name}: {log_line_decoded}")                            
@@ -158,7 +164,7 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
                                 time_per_keyword[keyword] = time.time()
                     # keywords without file 
                     for keyword in local_keywords:
-                        if time.time() - time_per_keyword[keyword] >= rate_limit:
+                        if time.time() - time_per_keyword[keyword] >= int(keyword_notification_cooldown):
                             if str(keyword) in log_line_decoded:
                                 logging.info(f"waiting {start_time - time.time()}")
                                 logging.info(f"Keyword '{keyword}' was found in {container.name}: {log_line_decoded}")                            
@@ -174,7 +180,8 @@ def monitor_container_logs(config, container, keywords, keywords_with_file, time
         # Füge hier zusätzliches Logging hinzu
         logging.error("Fehlerdetails: %s", str(e.__class__.__name__))
         logging.debug(traceback.format_exc())
-        
+
+
     logging.info("Monitoring stopped for Container: %s", container.name)
 
 def monitor_docker_logs(config):
@@ -185,8 +192,7 @@ def monitor_docker_logs(config):
     global_keywords = [ ]
     global_keywords_with_file = [ ]
     if isinstance(config.get("global_keywords"), list):
-        global_keywords = config["global_keywords"]
-        
+        global_keywords = config["global_keywords"] 
     elif isinstance(config.get("global_keywords"), dict):
         if "keywords_with_attachment" in config["global_keywords"]:
             global_keywords_with_file = (config["global_keywords"]["attachment"])
@@ -212,7 +218,7 @@ def monitor_docker_logs(config):
 
     send_ntfy_notification(config, "Logsend", f"Monitored Containers: {[c.name for c in containers_to_monitor]}, \n\n Containers not running: {unmonitored_containers}")
     for container in containers_to_monitor:
-        thread = threading.Thread(target=monitor_container_logs, args=(config, container, global_keywords, global_keywords_with_file, None))
+        thread = threading.Thread(target=monitor_container_logs, args=(config, container, global_keywords, global_keywords_with_file, None), daemon=True)
         threads.append(thread)
         thread.start()
 
@@ -221,7 +227,12 @@ def monitor_docker_logs(config):
     thread_file_change.start()
 
     logging.info("Monitoring started for all selected containers. Monitoring docker events now to watch for new containers")
+
     for event in client.events(decode=True, filters={"event": "start"}):
+        if shutdown_event.is_set():
+            logging.debug(f"Noticed that shutdown_event.is_set in monitor_docker_logs() function. Closing client now")
+            client.close()
+            break
         id = event["Actor"]["ID"]
         container_from_event = client.containers.get(id)
         if container_from_event.name in selected_containers:
