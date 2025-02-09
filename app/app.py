@@ -110,11 +110,10 @@ def log_attachment(container):
         file.write(log_tail)
         return file_name
 
-def monitor_container_logs(config, container, keywords, keywords_with_file, timeout=30):
+def monitor_container_logs(config, client, container, keywords, keywords_with_file):
     """
     Überwacht die Logs eines Containers und sendet Benachrichtigungen bei Schlüsselwörtern.
     """
-    client = docker.from_env()
     now = datetime.now()
     start_time = 0
     keyword_notification_cooldown = os.getenv("keyword_notification_cooldown", config.get("settings", {}).get("keyword_notification_cooldown", 10))
@@ -218,7 +217,7 @@ def monitor_docker_logs(config):
 
     send_ntfy_notification(config, "Logsend", f"Monitored Containers: {[c.name for c in containers_to_monitor]}, \n\n Containers not running: {unmonitored_containers}")
     for container in containers_to_monitor:
-        thread = threading.Thread(target=monitor_container_logs, args=(config, container, global_keywords, global_keywords_with_file, None), daemon=True)
+        thread = threading.Thread(target=monitor_container_logs, args=(config, client, container, global_keywords, global_keywords_with_file), daemon=True)
         threads.append(thread)
         thread.start()
 
@@ -236,7 +235,7 @@ def monitor_docker_logs(config):
         id = event["Actor"]["ID"]
         container_from_event = client.containers.get(id)
         if container_from_event.name in selected_containers:
-            thread = threading.Thread(target=monitor_container_logs, args=(config, container_from_event, global_keywords, global_keywords_with_file, None))
+            thread = threading.Thread(target=monitor_container_logs, args=(config, client, container_from_event, global_keywords, global_keywords_with_file), daemon=True)
             threads.append(thread)
             thread.start()
             logging.info("Monitoring new container: %s", container_from_event.name)
