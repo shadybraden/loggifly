@@ -26,7 +26,7 @@
 
 - **🔍 Keyword & Regex Monitoring**: Track specific keywords or complex regex patterns in container logs.  
 - **🐳 Fine-Grained Keyword Control**: You can specify keywords per container or for all containers.  
-- **📁 Log Attachments**: Automatically attach a file with the last 50 lines of logs to notifications.  
+- **📁 Log Attachments**: Automatically attach a file with the last 50 log lines to notifications.  
 - **⏱ Rate Limiting**: Avoid spam with per-keyword/container cooldowns.  
 - **🔧 YAML Configuration**: Define containers, keywords, and notification settings in a simple config file.  
 - **📤 ntfy Integration**: Send alerts to any ntfy-compatible service (self-hosted or public).
