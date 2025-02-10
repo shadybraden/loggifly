@@ -15,9 +15,10 @@ LABEL org.opencontainers.image.source="https://github.com/clemcer/logsend"
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Kopiere die restlichen Dateien (Skript und Konfiguration) in den Container
-COPY app/app.py .
 COPY app/notifier.py .
 COPY config.yaml .
+COPY app/app.py .
+
 
 
 # Setze Standard-Umgebungsvariablen (optional, können aber beim Start überschrieben werden)
