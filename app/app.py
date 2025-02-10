@@ -157,45 +157,31 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
                 log_line_decoded = str(log_line.decode("utf-8")).strip()
                 #logging.debug("[%s] %s", container.name, log_line_decoded)
                 if log_line_decoded:
-                    # keywords with file 
-                    for keyword in local_keywords_with_file:
-                                ## Regex-Keyword
+                    for keyword in local_keywords + local_keywords_with_file:
                         if isinstance(keyword, dict) and keyword.get("regex") is not None:
-                            keyword = keyword["regex"]
-                            logging.debug(f"Testing regex: {keyword} against line: {log_line_decoded}")
+                            regex_keyword = keyword["regex"]
+                            if time.time() - time_per_keyword[regex_keyword] >= int(keyword_notification_cooldown):
+                                if re.search(regex_keyword, log_line_decoded, re.IGNORECASE):
+                                    if keyword in local_keywords_with_file:
+                                        logging.info(f"Regex-Keyword (with attachment) '{regex_keyword}' was found in {container.name}: {log_line_decoded}")
+                                        file_name = log_attachment(container)
+                                        send_ntfy_notification(config, container.name, log_line_decoded, keyword, file_name)
+                                    else:
+                                        send_ntfy_notification(config, container.name, log_line_decoded, keyword)
+                                        logging.info(f"Regex-Keyword '{keyword}' was found in {container.name}: {log_line_decoded}")
+                                    time_per_keyword[regex_keyword] = time.time()
+                                    logging.info(f"waiting {start_time - time.time()} for {regex_keyword}")
+
+
+                        elif str(keyword) in log_line_decoded:
                             if time.time() - time_per_keyword[keyword] >= int(keyword_notification_cooldown):
-                                if re.search(keyword, log_line_decoded, re.IGNORECASE):
-                                    logging.info(f"waiting {start_time - time.time()} for {keyword}")
-                                    logging.info(f"Regex-Keyword (with attachment) '{keyword}' was found in {container.name}: {log_line_decoded}")
+                                if keyword in local_keywords_with_file:
+                                    logging.info(f"Keyword (with attachment) '{keyword}' was found in {container.name}: {log_line_decoded}") 
                                     file_name = log_attachment(container)
                                     send_ntfy_notification(config, container.name, log_line_decoded, keyword, file_name)
-                                    time_per_keyword[keyword] = time.time()
-                            ## Normal String Keyword
-                        elif str(keyword) in log_line_decoded:
-                            if time.time() - time_per_keyword[keyword] >= int(keyword_notification_cooldown):
-                                logging.debug(f"waiting {start_time - time.time()} for {keyword}")
-                                logging.info(f"Keyword (with attachment) '{keyword}' was found in {container.name}: {log_line_decoded}") 
-                                file_name = log_attachment(container)
-                                send_ntfy_notification(config, container.name, log_line_decoded, keyword, file_name)
-                                time_per_keyword[keyword] = time.time()
-                    # keywords without file 
-                    for keyword in local_keywords:
-                        ## Regex-Keyword
-                        if isinstance(keyword, dict) and keyword.get("regex") is not None:
-                            keyword = keyword["regex"]
-                            logging.debug(f"Testing regex: {keyword} against line: {log_line_decoded}")
-                            if time.time() - time_per_keyword[keyword] >= int(keyword_notification_cooldown):
-                                if re.search(keyword, log_line_decoded, re.IGNORECASE):
-                                    logging.info(f"waiting {start_time - time.time()} for {keyword}")
-                                    logging.info(f"Regex-Keyword (with attachment) '{keyword}' was found in {container.name}: {log_line_decoded}")
+                                else:
                                     send_ntfy_notification(config, container.name, log_line_decoded, keyword)
-                                    time_per_keyword[keyword] = time.time()
-                            ## Normal String Keyword
-                        elif str(keyword) in log_line_decoded:
-                            if time.time() - time_per_keyword[keyword] >= int(keyword_notification_cooldown):
-                                logging.debug(f"waiting {start_time - time.time()} for {keyword}")
-                                logging.info(f"Keyword (with attachment) '{keyword}' was found in {container.name}: {log_line_decoded}") 
-                                send_ntfy_notification(config, container.name, log_line_decoded, keyword)
+                                    logging.info(f"Keyword '{keyword}' was found in {container.name}: {log_line_decoded}") 
                                 time_per_keyword[keyword] = time.time()
 
             except UnicodeDecodeError:
