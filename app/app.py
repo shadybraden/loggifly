@@ -159,7 +159,6 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
                 if log_line_decoded:
                     # keywords with file 
                     for keyword in local_keywords_with_file:
-                        logging.debug(f"{keyword} (with attachment) found in {container.name}")
                                 ## Regex-Keyword
                         if isinstance(keyword, dict) and keyword.get("regex") is not None:
                             keyword = keyword["regex"]
@@ -181,7 +180,6 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
                                 time_per_keyword[keyword] = time.time()
                     # keywords without file 
                     for keyword in local_keywords:
-                        logging.debug(f"{keyword} found in {container.name}")
                         ## Regex-Keyword
                         if isinstance(keyword, dict) and keyword.get("regex") is not None:
                             keyword = keyword["regex"]
