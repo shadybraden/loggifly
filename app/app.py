@@ -1,5 +1,6 @@
 import os
 import yaml
+import re
 import logging
 import docker
 import threading
@@ -137,8 +138,11 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
 
     time_per_keyword = { }
     for keyword in local_keywords + local_keywords_with_file:
-        time_per_keyword[keyword] = 0
-
+        if isinstance(keyword, dict) and keyword.get("regex") is not None:
+            time_per_keyword[keyword["regex"]] = 0
+        else:
+            time_per_keyword[keyword] = 0
+    logging.debug(f"starting log stream for {container_name}")
     try:
         log_stream = container.logs(stream=True, follow=True, since=now)
         logging.info("Monitoring for Container started: %s", container.name)
@@ -154,21 +158,39 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
                 if log_line_decoded:
                     # keywords with file 
                     for keyword in local_keywords_with_file:
-                        if time.time() - time_per_keyword[keyword] >= int(keyword_notification_cooldown):
-                            if str(keyword) in log_line_decoded:
-                                logging.info(f"waiting {start_time - time.time()}")
-                                logging.info(f"Keyword (with attachment) '{keyword}' was found in {container.name}: {log_line_decoded}")                            
-                                file_name = log_attachment(container)
-                                send_ntfy_notification(config, container.name, log_line_decoded, keyword, file_name)
-                                time_per_keyword[keyword] = time.time()
+                        logging.debug(f"{keyword} found in {container_name}")
+                        #if time.time() - time_per_keyword[keyword] >= int(keyword_notification_cooldown):
+                            ## Regex-Keyword
+                        if isinstance(keyword, dict) and keyword.get("regex") is not None:
+                            logging.debug(f"Testing regex: {keyword['regex']} against line: {log_line_decoded}")
+                            if re.search(keyword["regex"], log_line_decoded, re.IGNORECASE):
+                                logging.info(f"waiting {start_time - time.time()} for {keyword['regex']}")
+                                logging.info(f"Regex-Keyword (with attachment) '{keyword['regex']}' was found in {container.name}: {log_line_decoded}")
+                                send_ntfy_notification(config, container.name, log_line_decoded, keyword["regex"])
+                                time_per_keyword[keyword["regex"]] = time.time()
+                        ## Normal String Keyword
+                        elif str(keyword) in log_line_decoded:
+                            logging.debug(f"waiting {start_time - time.time()} for {keyword}")
+                            logging.info(f"Keyword (with attachment) '{keyword}' was found in {container.name}: {log_line_decoded}") 
+                            file_name = log_attachment(container)
+                            send_ntfy_notification(config, container.name, log_line_decoded, keyword, file_name)
+                            time_per_keyword[keyword] = time.time()
                     # keywords without file 
                     for keyword in local_keywords:
-                        if time.time() - time_per_keyword[keyword] >= int(keyword_notification_cooldown):
-                            if str(keyword) in log_line_decoded:
-                                logging.info(f"waiting {start_time - time.time()}")
-                                logging.info(f"Keyword '{keyword}' was found in {container.name}: {log_line_decoded}")                            
-                                send_ntfy_notification(config, container.name, log_line_decoded, keyword)
-                                time_per_keyword[keyword] = time.time()
+                       # if time.time() - time_per_keyword[keyword] >= int(keyword_notification_cooldown):
+                            ## Regex-Keyword
+                        if isinstance(keyword, dict) and keyword.get("regex") is not None:
+                            if re.search(keyword["regex"], log_line_decoded, re.IGNORECASE):
+                                logging.info(f"waiting {start_time - time.time()} for {keyword['regex']}")
+                                logging.info(f"Regex-Keyword '{keyword['regex']}' was found in {container.name}: {log_line_decoded}")  
+                                send_ntfy_notification(config, container.name, log_line_decoded, keyword["regex"])
+                                time_per_keyword[keyword["regex"]] = time.time()
+                        ## Normal String Keyword
+                        elif str(keyword) in log_line_decoded:
+                            logging.info(f"waiting {start_time - time.time()}")
+                            logging.info(f"Keyword '{keyword}' was found in {container.name}: {log_line_decoded}")    
+                            send_ntfy_notification(config, container.name, log_line_decoded, keyword)
+                            time_per_keyword[keyword] = time.time()
 
             except UnicodeDecodeError:
                 logging.warning("Fehler beim Dekodieren einer Log-Zeile von %s", container.name)
@@ -188,13 +210,14 @@ def monitor_docker_logs(config):
     Erstellt Threads zur Überwachung der Container-Logs.
     """
     threads = []
+
     global_keywords = [ ]
     global_keywords_with_file = [ ]
     if isinstance(config.get("global_keywords"), list):
         global_keywords = config["global_keywords"] 
     elif isinstance(config.get("global_keywords"), dict):
         if "keywords_with_attachment" in config["global_keywords"]:
-            global_keywords_with_file = (config["global_keywords"]["attachment"])
+            global_keywords_with_file = (config["global_keywords"]["keywords_with_attachment"])
         if "keywords" in config["global_keywords"]:
             global_keywords = (config["global_keywords"]["keywords"])
         if not "keywords_with_attachment" or "keywords" in config["global_keywords"]:
