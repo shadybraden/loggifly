@@ -36,7 +36,7 @@
 
 # Logsend Configuration 
 
-You can find the Installation guide [here](https://github.com/clemcer/logsend#installation-via-docker-compose). But first you should create your config file.
+You can find the docker compose file [here](https://github.com/clemcer/logsend#installation-via-docker-compose). But first you should create your config file.
 While there are some settings you can set via environment variables most of the configuration for Logsend happens in the config.yaml file.
 
 ---
