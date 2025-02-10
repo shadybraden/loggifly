@@ -154,9 +154,10 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
                 client.close()
                 break
             try:
-                log_line_decoded = str(log_line.decode("utf-8")).strip().lower()
+                log_line_decoded = str(log_line.decode("utf-8")).strip()
                 #logging.debug("[%s] %s", container.name, log_line_decoded)
                 if log_line_decoded:
+                    log_line_lower = log_line_decoded.lower()
                     for keyword in local_keywords + local_keywords_with_file:
                         if isinstance(keyword, dict) and keyword.get("regex") is not None:
                             regex_keyword = keyword["regex"]
@@ -172,8 +173,7 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
                                     time_per_keyword[regex_keyword] = time.time()
                                     logging.info(f"waiting {start_time - time.time()} for {regex_keyword}")
 
-
-                        elif str(keyword) in log_line_decoded:
+                        elif str(keyword).lower() in log_line_lower:
                             if time.time() - time_per_keyword[keyword] >= int(keyword_notification_cooldown):
                                 if keyword in local_keywords_with_file:
                                     logging.info(f"Keyword (with attachment) '{keyword}' was found in {container.name}: {log_line_decoded}") 
@@ -225,12 +225,13 @@ def monitor_docker_logs(config):
 
     containers_to_monitor = [c for c in containers if c.name in selected_containers]
 
-    unmonitored_containers = [c for c in selected_containers if c not in [c.name for c in containers_to_monitor]]
+    containers_to_monitor_str = "\n".join(c.name for c in containers_to_monitor)   
+    unmonitored_containers_str = "\n".join(c for c in selected_containers if c not in [c.name for c in containers_to_monitor])
 
     logging.info(f"These containers are being monitored: {[c.name for c in containers_to_monitor]} \n \
-                    These containers from your config are not running {unmonitored_containers}")
+                    These containers from your config are not running {unmonitored_containers_str}")
 
-    send_ntfy_notification(config, "Logsend", f"Monitored Containers: {[c.name for c in containers_to_monitor]}, \n\n Containers not running: {unmonitored_containers}")
+    send_ntfy_notification(config, "Logsend", f"The programm is running and monitoring these selected Containers:\n{containers_to_monitor_str}, \n\nThese selected Containers are not running:\n{unmonitored_containers_str}")
     for container in containers_to_monitor:
         thread = threading.Thread(target=monitor_container_logs, args=(config, client, container, global_keywords, global_keywords_with_file), daemon=True)
         threads.append(thread)
@@ -264,6 +265,6 @@ if __name__ == "__main__":
     config = load_config()
     set_logging(config)
     logging.debug(config)
-    send_ntfy_notification(config, "Logsend:", "The programm is running and monitoring the logs of your selected containers.")
+   # send_ntfy_notification(config, "Logsend:", "The programm is running and monitoring the logs of your selected containers.")
     monitor_docker_logs(config)
 

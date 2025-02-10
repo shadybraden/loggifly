@@ -14,13 +14,11 @@ def send_ntfy_notification(config, container_name, message, keyword=None, file_n
     ntfy_url = config["ntfy"]["url"]
     ntfy_token = config["ntfy"]["token"]
 
-    if isinstance(config.get("containers").get(container_name, {}), dict):
-        ntfy_topic = config.get("containers", {}).get(container_name, {}).get("ntfy_topic") or config.get("ntfy", {}).get("topic", "")
-        ntfy_tags = config.get("containers", {}).get(container_name, {}).get("ntfy_tags") or config.get("ntfy", {}).get("tags", "warning")
+   # if isinstance(config.get("containers").get(container_name, {}), dict):
+    ntfy_topic = config.get("containers", {}).get(container_name, {}).get("ntfy_topic") or config.get("ntfy", {}).get("topic", "")
+    ntfy_tags = config.get("containers", {}).get(container_name, {}).get("ntfy_tags") or config.get("ntfy", {}).get("tags", "warning")
 
-    # else:
-    #     ntfy_topic = config.get("ntfy", {}).get("topic", "")
-    #     ntfy_tags = config.get("ntfy", {}).get("tags", "warning")
+
    
 
     if not ntfy_url or not ntfy_topic or not ntfy_token:
