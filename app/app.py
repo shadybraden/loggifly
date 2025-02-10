@@ -122,9 +122,9 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
     local_keywords_with_file = keywords_with_file.copy()
     container_name = container.name
 
-    config["containers"] = {
-        container_name: config.get("containers", {}).get(container_name, [])
-    }
+    # config["containers"] = {
+    #     container_name: config.get("containers", {}).get(container_name, [])
+    # }
     if isinstance(config["containers"][container.name], list):
         local_keywords.extend(config["containers"][container.name])
     elif isinstance(config["containers"][container.name], dict):
@@ -169,7 +169,6 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
                                 logging.info(f"Keyword '{keyword}' was found in {container.name}: {log_line_decoded}")                            
                                 send_ntfy_notification(config, container.name, log_line_decoded, keyword)
                                 time_per_keyword[keyword] = time.time()
-
             except UnicodeDecodeError:
                 logging.warning("Fehler beim Dekodieren einer Log-Zeile von %s", container.name)
     except docker.errors.APIError as e:
