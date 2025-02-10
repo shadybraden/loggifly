@@ -1,275 +1,227 @@
 ###############################################################################
-# Container Log Monitoring & Notification System Configuration
+# Logsend Configuration
 #
 # This configuration file monitors container logs for specific keywords and sends 
 # notifications when a keyword is found. For certain keywords, an attachment 
-# (i.e. the last log lines) is sent along with the notification.
+# (i.e. the last 50 log lines) is sent along with the notification.
 #
-# Containers are grouped by theme using ntfy_topic and ntfy_tags. Only containers 
-# that are expected to produce relevant log entries are included.
+# If you are using ntfy you can specify tags and the topic per Container.
 #
-# Keywords can be plain strings or regex patterns (prefixed with "regex:"). When 
-# critical errors occur (e.g. fatal errors), a log attachment is sent.
+# Keywords can be plain strings or regex patterns (prefixed with "regex"). 
 ###############################################################################
+
 
 containers:
   # -------------------- Media & Entertainment --------------------
   audiobookshelf:
     ntfy_topic: media
-    ntfy_tags: "audiobookshelf, media"
+    ntfy_tags: "books, headphones"       # Books and headphones: audiobooks
     keywords:
       - "requested download"
       - "downloaded item"
-      - regex: 'download (failed|error)'     # Matches variations like "download failed" or "download error"
+      - regex: 'download (failed|error)'    # Matches "download failed" or "download error"
     keywords_with_attachment:
-      - regex: 'critical download error'     # In case a critical download error occurs, send logs
-
-  sonarr:
-    ntfy_topic: media
-    ntfy_tags: "sonarr, tv"
-    keywords:
-      - "download failed"
-      - "series not found"
-      - regex: 'error.*download'              # Catch any download-related error messages
-    keywords_with_attachment:
-      - regex: 'critical error'               # Attach logs when a critical error is detected
-
-  jellyfin:
-    ntfy_topic: media
-    ntfy_tags: "jellyfin, media"
-    keywords:
-      - "transcoding error"
-      - "buffering"
-      - regex: 'connection lost'
-    keywords_with_attachment:
-      - regex: 'fatal'                        # Send attachment if a fatal error is logged
-
-  plex:
-    ntfy_topic: media
-    ntfy_tags: "plex, media"
-    keywords:
-      - "streaming error"
-      - "connection lost"
-      - regex: 'player.*error'                # Matches errors from the player module
-    keywords_with_attachment:
-      - regex: 'critical'                     # Critical errors trigger attachment
+      - regex: 'critical download error'     # Critical download issues trigger an attachment
 
   immich_server:
     ntfy_topic: media
-    ntfy_tags: "immich, images"
+    ntfy_tags: "camera, framed_picture"   # Camera and framed picture: image server
     keywords:
       - "upload failed"
-      - regex: 'timeout'                      # Timeout errors during upload
+      - regex: 'timeout'                     # Timeout errors during upload
     keywords_with_attachment:
-      - "error"                              # Send attachment on any log line containing "error"
+      - "error"                             # Any log line containing "error" triggers an attachment
+
+  prowlarr:
+    ntfy_topic: media
+    ntfy_tags: "mag, satellite"           # Magnifying glass and satellite: indexer monitoring
+    keywords:
+      - "connection failed"
+      - "authentication error"
+      - regex: 'error.*(update|connection)'  # Matches errors related to updates or connections
+    keywords_with_attachment:
+      - regex: 'critical'                    # Critical errors trigger an attachment
+
+  bazarr:
+    ntfy_topic: media
+    ntfy_tags: "speech_balloon, warning"  # Speech balloon and warning: subtitle errors
+    keywords:
+      - "download failed"
+      - "API error"
+      - regex: 'error.*(download|API)'        # Matches errors in download or API calls
+    keywords_with_attachment:
+      - regex: 'fatal'                       # Fatal errors trigger an attachment
 
   # -------------------- Books & Documents --------------------
   calibre-web-automated-book-downloader:
     ntfy_topic: books
-    ntfy_tags: "calibre, books"
+    ntfy_tags: "books, page_facing_up"    # Books and open page: document processing
     keywords:
       - "book queued"
       - "download successful"
-      - regex: 'download (failed|error)'     # Monitor for download issues
+      - regex: 'download (failed|error)'
     keywords_with_attachment:
-      - regex: 'critical'                     # Attach logs for critical failures
+      - regex: 'critical'                    # Critical failures trigger an attachment
 
   nextcloud:
     ntfy_topic: documents
-    ntfy_tags: "nextcloud, sync"
+    ntfy_tags: "cloud, file_folder"       # Cloud and folder: file sync
     keywords:
       - "sync error"
       - "connection failed"
-      - regex: 'database.*error'              # Catch database-related errors
+      - regex: 'database.*error'             # Matches database-related errors
     keywords_with_attachment:
-      - regex: 'critical'                     # Attach logs if a critical error occurs
+      - regex: 'critical'                    # Critical errors trigger an attachment
 
   paperless-ngx-webserver-1:
     ntfy_topic: documents
-    ntfy_tags: "paperless, documents"
+    ntfy_tags: "page_with_curl, memo"      # Document icon and memo: document processing
     keywords:
       - "OCR error"
       - "failed to process document"
-      - regex: 'document (failed|error)'      # Generic document processing error
+      - regex: 'document (failed|error)'     # Generic document processing error
     keywords_with_attachment:
-      - regex: 'fatal'                        # Attach on fatal errors
+      - regex: 'fatal'                       # Fatal errors trigger an attachment
 
   # -------------------- Security & Identity --------------------
   crowdsec:
     ntfy_topic: security
-    ntfy_tags: "crowdsec, security"
+    ntfy_tags: "shield, rotating_light"   # Shield and rotating light: security alerts
     keywords:
       - "blocked"
-      - regex: 'attack detected'              # Monitors for attack detection messages
-    # No attachment needed since these events are usually self-contained
+      - regex: 'attack detected'             # Monitors for attack detection messages
+    # No attachment for routine security events
 
   vaultwarden:
     ntfy_topic: identity
-    ntfy_tags: "vaultwarden, auth"
+    ntfy_tags: "lock, key"                # Lock and key: identity/authentication
     keywords:
       - "Username or password is incorrect"
       - regex: 'incorrect'
       - "username"
       - "password"
     keywords_with_attachment:
-      - "password"                           # Send attachment if password issues occur
+      - "password"                          # Critical password issues trigger an attachment
 
   authentik-server:
     ntfy_topic: identity
-    ntfy_tags: "authentik, auth"
+    ntfy_tags: "closed_lock_with_key, no_entry_sign"  # Closed lock and no entry: auth errors
     keywords:
       - "login failed"
       - "unauthorized"
       - regex: 'permission denied'
     keywords_with_attachment:
-      - regex: 'critical error'              # Attach logs on critical authentication errors
+      - regex: 'critical error'             # Critical authentication errors trigger an attachment
 
   # -------------------- Network & Infrastructure --------------------
   traefik:
     ntfy_topic: network
-    ntfy_tags: "traefik, proxy"
+    ntfy_tags: "globe_with_meridians, warning"  # Globe and warning: network proxy issues
     keywords:
       - "expired"
       - "invalid"
-      - regex: 'certificate (has )?expired'   # Matches certificate expiration issues
+      - regex: 'certificate (has )?expired'  # Matches certificate expiration issues
     keywords_with_attachment:
-      - regex: 'fatal'                        # Attach only on fatal certificate errors
+      - regex: 'fatal'                       # Fatal certificate errors trigger an attachment
 
   adguardhome:
     ntfy_topic: network
-    ntfy_tags: "adguard, dns"
+    ntfy_tags: "shield, satellite"        # Shield and satellite: DNS protection
     keywords:
       - "DNS error"
       - "connection timeout"
       - regex: 'query failed'
     keywords_with_attachment:
-      - regex: 'critical'                     # Attach on critical DNS issues
+      - regex: 'critical'                    # Critical DNS issues trigger an attachment
 
   pihole:
     ntfy_topic: network
-    ntfy_tags: "pihole, dns"
+    ntfy_tags: "no_entry_sign, mag"       # No entry and magnifying glass: DNS filtering
     keywords:
       - "FTL error"
       - "blocked domain"
       - regex: 'gravity.*failed'              # Catches gravity update failures
     keywords_with_attachment:
-      - regex: 'critical'                     # Attach if a critical error occurs
+      - regex: 'critical'                    # Critical errors trigger an attachment
 
   unifi-controller:
     ntfy_topic: network
-    ntfy_tags: "unifi, network"
+    ntfy_tags: "wifi, antenna_bars"        # WiFi and antenna: wireless network status
     keywords:
       - "disconnected"
       - "AP offline"
       - regex: 'warning.*(disconnected|offline)'  # Warn if access points are offline
     # Routine connectivity warnings do not trigger attachments
 
-  # -------------------- Monitoring & Maintenance --------------------
-  diun:
-    ntfy_topic: maintenance
-    ntfy_tags: "diun, update"
-    keywords:
-      - "update available"
-      - "error checking updates"
-    # Routine update notifications; no attachment required
-  
-  watchtower:
-    ntfy_topic: maintenance
-    ntfy_tags: "watchtower, update"
-    keywords:
-      - "update failed"
-      - "error pulling image"
-    keywords_with_attachment:
-      - regex: 'fatal'                        # Attach logs if a fatal error occurs during updates
-
+  # -------------------- Maintenance & Management --------------------
   portainer:
     ntfy_topic: maintenance
-    ntfy_tags: "portainer, management"
+    ntfy_tags: "wrench, gear"             # Wrench and gear: system management
     keywords:
       - "error"
       - "failed to update"
       - regex: '.*(error|failed).*'
     keywords_with_attachment:
-      - regex: 'critical'                     # Attach logs only for critical issues
+      - regex: 'critical'                    # Critical issues trigger an attachment
 
   syncthing:
-    ntfy_topic: documents
-    ntfy_tags: "syncthing, sync"
+    ntfy_topic: maintenance
+    ntfy_tags: "arrows_counterclockwise, recycle"  # Refresh arrows and recycle: sync operations
     keywords:
       - "sync error"
       - "failed to connect"
     keywords_with_attachment:
-      - regex: 'fatal'                        # Attach logs if a fatal sync error is detected
-
-  # -------------------- Home Automation --------------------
-  homeassistant:
-    ntfy_topic: homeautomation
-    ntfy_tags: "homeassistant, automation"
-    keywords:
-      - "failed to update entity"
-      - "error during startup"
-      - regex: '.*(connection lost|unreachable).*'
-    keywords_with_attachment:
-      - regex: 'critical'                     # Attach on critical errors
+      - regex: 'fatal'                       # Fatal sync errors trigger an attachment
 
   # -------------------- Monitoring & Visualization --------------------
   grafana:
     ntfy_topic: monitoring
-    ntfy_tags: "grafana, monitoring"
+    ntfy_tags: "bar_chart, chart_with_upwards_trend"  # Bar chart and upward trend: monitoring
     keywords:
       - "datasource error"
       - "dashboard failed"
       - regex: 'error.*query'
     keywords_with_attachment:
-      - regex: 'fatal'                        # Attach if a fatal error is encountered
+      - regex: 'fatal'                       # Fatal errors trigger an attachment
 
-  # -------------------- Nextcloud Database & Cache Layers --------------------
   nextcloud-db-1:
     ntfy_topic: documents
-    ntfy_tags: "nextcloud, database"
+    ntfy_tags: "floppy_disk, database"     # Floppy disk and database: DB layer
     keywords:
       - "database connection error"
       - "query failed"
     keywords_with_attachment:
-      - regex: 'fatal'                        # Attach on fatal DB errors
+      - regex: 'fatal'                       # Fatal DB errors trigger an attachment
 
   nextcloud-redis-1:
     ntfy_topic: documents
-    ntfy_tags: "nextcloud, redis"
+    ntfy_tags: "zap, electric_plug"        # Zap and electric plug: cache/redis layer
     keywords:
       - "connection refused"
       - "timeout"
-    # Typically, cache connection issues are transient; no attachment needed.
-    keywords_with_attachment: []
-
-  # -------------------- Additional Popular Self-Hosted Services --------------------
-  # Portainer, Home Assistant, and Grafana are already included above.
-  # Other services (e.g., InfluxDB, MariaDB, etc.) can be added similarly if needed.
+    keywords_with_attachment: []              # No attachment for transient cache issues
 
 ###############################################################################
 # Global Keywords
 #
 # Global keywords apply to all containers unless overridden by container-specific
-# settings. You can remove or tailor these if you prefer to define them only on a 
-# per-container basis.
+# settings. Feel free to remove or tailor these to your needs.
 ###############################################################################
 global_keywords:
-  keywords:
-    - error
-    - segfault
-    - failed login
-    - invalid credentials
-    - brute force
-    - unauthorized
-    - permission denied
-    - access denied
-    - unhealthy
-    - connection refused
-    - timeout
-    - out of memory
-  keywords_with_attachment:
-      - panic
-      - fatal
+  - error
+  - segfault
+  - panic
+  - fatal
+  - failed login
+  - invalid credentials
+  - brute force
+  - unauthorized
+  - permission denied
+  - access denied
+  - unhealthy
+  - connection refused
+  - timeout
+  - out of memory
 
 ###############################################################################
 # Notification Settings (ntfy)
@@ -277,18 +229,16 @@ global_keywords:
 # Configure your ntfy notification channel here.
 ###############################################################################
 ntfy:
-  url: "http://192.168.178.184:82"  # URL of your ntfy instance
-  topic: "logsend"                  # Default topic for notifications (overridden by container-specific topics)
-  token: "token"                    # Authentication token (if required)
+  url: "http://192.168.178.184:82"   # URL of your ntfy instance
+  topic: "logsend"                   # Default topic for notifications (overridden by container-specific topics)
+  token: "token"                     # Authentication token (if required)
 
 ###############################################################################
-# Global Settings
-#
-# Additional settings for the log monitoring system.
+# Additional settings for Logsend system.
 ###############################################################################
 settings:
   log-level: INFO
-  # Cooldown in seconds to avoid sending repeated notifications for the same keyword.
+  # Cooldown (in seconds) to avoid sending repeated notifications for the same keyword.
   keyword_notification_cooldown: 5
 
 ###############################################################################
