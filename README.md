@@ -1,59 +1,221 @@
-# Logsend ![Logsend Icon](icon.png)
+<a name="readme-top"></a>
+
+<br />
+<div align="center">
+  <a href="clemcer/logsend">
+    <img src="/icon.png" alt="Logo" width="100" height="100">
+  </a>
+
+<h1 align="center">Logsend</h1>
+
+  <p align="center">
+    <a href="https://github.com/clemcer/logsend/issues">Report Bug</a>
+    ·
+    <a href="https://github.com/clemcer/logsend/issues">Request Feature</a>
+  </p>
+</div>
+
+<br>
+
 
 **Logsend** is a lightweight tool for monitoring Docker container logs and sending notifications when specific keywords are detected. It supports both plain text and regular expression (regex) keywords and can attach the last 50 lines of a log file when a match is found. 🚀
 
 ---
 
-## Features
+## 🚀 Features
 
-- 🔍 **Container Log Monitoring**  
-  Monitor Docker container logs in real time.
-
-- 🏷 **Keyword Detection**  
-  Trigger notifications when specific keywords (or regex patterns) are found.
-
-- 📝 **Log Attachments**  
-  Attach the last 50 lines of the log for context when a keyword match occurs.
-
-- ⚙️ **Flexible Configuration**  
-  Configure per-container keywords and global keywords via a YAML file, with additional overrides via environment variables.
-
-- ⏱ **Notification Cooldown**  
-  Prevent duplicate notifications with per-keyword and per-container cooldown settings.
+- **🔍 Keyword & Regex Monitoring**: Track specific keywords or complex regex patterns in container logs.  
+- **🐳 Global and per container kewords**: You can specify keywords per container or for all containers.  
+- **📁 Log Attachments**: Automatically attach a file with the last 50 lines of logs to notifications.  
+- **⏱ Rate Limiting**: Avoid spam with per-keyword/container cooldowns.  
+- **🔧 YAML Configuration**: Define containers, keywords, and notifications in a simple config file.  
+- **📤 ntfy Integration**: Send alerts to any ntfy-compatible service (self-hosted or public).
+  - **🥳 Priority & Tags**: Customize notification priority and tags/emojis.  
 
 ---
 
-## Installation via Docker Compose
+# Logsend Configuration 
 
-Create a `docker-compose.yaml` file in your project with the following content:
+You can find the Installation guide [here](https://github.com/clemcer/logsend#installation-via-docker-compose). But first you should create your config file.
+While there are some settings you can set via environment variables most of the configuration for Logsend happens in the config.yaml file.
+
+---
+
+## 📁 Basic Structure
+
+The `config.yaml` file is divided into three main sections:
+1. **`containers`**: Define which containers to monitor and their specific keywords.
+2. **`global_keywords`**: Keywords that apply to **all** monitored containers.
+3. **`settings`**: Global settings like cooldowns and log levels.
+
+---
+
+## 🐳 `containers` Section
+
+This section defines the containers you want to monitor and the keywords/regex patterns to look for.
+
+### Example:
+```yaml
+containers:
+  hrconvert2:
+    keywords_with_attachment:
+      - regex: "\\bhttp\\b"  # Case-insensitive regex for "HTTP"
+      - "error"              # Plain-text keyword
+  nextcloud-app-1:
+    keywords_with_attachment:
+      - regex: "\\b(unauthorized|permission denied)\\b"
+      - "disk full"
+```
+### Key Details:
+
+- Container Name: Use the exact name of the Docker container (e.g., hrconvert2).
+- keywords_with_attachment:
+  - A list of keywords or regex patterns to monitor.
+  - If a match is found, the last 50 lines of the log are attached to the notification.
+  - Use regex: for regex patterns (e.g., "\\bhttp\\b").
+  - Use plain strings for exact matches (e.g., "error").
+
+ ---
+ 
+## 🌍 `global_keywords` Section
+Keywords defined here apply to all containers being monitored.
+### Example:
+
+```yaml
+
+global_keywords:
+  - regex: "\\b(critical|panic)\\b"  # Match "critical" or "panic" in any container
+  - "out of memory"                  # Plain-text keyword
+```
+
+### Key Details:
+- Global Scope: These keywords are checked in all containers.
+- Same Syntax: Use regex: for patterns or plain strings for exact matches.
+
+---
+
+## ⚙️ `settings` Section
+
+This section defines global behavior for Logsend.
+
+### Example:
+
+```yaml
+settings:
+  keyword_notification_cooldown: 5  # Cooldown (in seconds) between notifications per keyword
+  log_level: "INFO"                 # Logging verbosity (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+```
+
+### Key Details:
+
+- keyword_notification_cooldown:
+  - Prevents spam by limiting how often a notification is sent for the same keyword. Default: 5 seconds.
+- log_level:
+  - Set Log Level. Default: INFO
+
+---
+
+## Enviroment Variables
+
+These are the settings you can set via docker environment variables in either your docker compose or .env file
+
+| Variables                         | Description                                              | Default  |
+|-----------------------------------|----------------------------------------------------------|----------|
+| **NTFY_URL**                      | URL of the ntfy notification service.                    | _N/A_    |
+| **NTFY_TOKEN**                    | Authentication token for ntfy.                           | _N/A_    |
+| **NTFY_TOPIC**                    | Notification topic for ntfy.                             | logsend  |
+| **NTFY_TAGS**                     | Ntfy [Tags/Emojis](https://docs.ntfy.sh/emojis/) for ntfy notifications.                 | warning  |
+| **NTFY_PRIORITY**                 | Notification [priority](https://docs.ntfy.sh/publish/?h=priori#message-priority) for ntfy messages.                 | 3 /default |
+| **KEYWORD_NOTIFICATION_COOLDOWN** | Cooldown period (in seconds) per container per keyword before new message can be sent  | 5        |
+| **LOG_LEVEL**                     | Log Level for Logsend container logs.                    | INFO     |
+
+
+## 🛠 Installation
+
+### Installation via Docker Compose
+
+1. Create a `docker-compose.yaml` file in your project with the following content. If you want to set some settings here uncomment the environment variables
 
 ```yaml
 version: "3.8"
 services:
   logsend:
+    image: ghcr.io/clemcer/logsend:latest
     container_name: logsend
-    build: .
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./logsend/config/config.yaml:/app/config.yaml
-    # You can also override notification settings using environment variables:
-    # environment:
+    environment:
     #   NTFY_URL: "http://your.ntfy.server:port"
     #   NTFY_TOPIC: "your_topic"
     #   NTFY_TOKEN: "your_token"
     #   NTFY_PRIORITY: "your_priority"
     #   NTFY_TAG: "your_tag"
+    #   KEYWORD_NOTIFICATION_COOLDOWN = 5
+    restart: unless-stopped
+```
 
+2. Then, build and run the container:
 
-| Key                                        | Description                                                                                      | Default  | Environment Variable Override |
-|--------------------------------------------|--------------------------------------------------------------------------------------------------|----------|-------------------------------|
-| **containers**                             | Container-specific configurations. You can specify keywords and keywords with attachments.       | _N/A_    | _N/A_                         |
-| **global_keywords**                        | Keywords that apply globally to all containers.                                                  | _N/A_    | _N/A_                         |
-| **notifications.ntfy.url**                 | URL of the ntfy notification service.                                                            | _None_   | `NTFY_URL`                    |
-| **notifications.ntfy.topic**               | Notification topic for ntfy.                                                                     | "loggify"| `NTFY_TOPIC`                  |
-| **notifications.ntfy.token**               | Authentication token for ntfy.                                                                   | _None_   | `NTFY_TOKEN`                  |
-| **notifications.ntfy.priority**            | Notification priority for ntfy messages.                                                         | _None_   | `NTFY_PRIORITY`               |
-| **notifications.ntfy.tag**                 | Tag(s) for ntfy notifications.                                                                   | _None_   | `NTFY_TAG`                    |
-| **notifications.apprise**                  | Apprise notification settings (currently placeholders).                                          | _N/A_    | _N/A_                         |
-| **settings.log-level**                     | Log level for the application.                                                                   | `INFO`   | _N/A_                         |
-| **settings.keyword_notification_cooldown** | Cooldown period (in seconds) to prevent sending duplicate notifications for the same keyword.    | `5`      | _N/A_                         |
+```bash
+docker-compose up -d
+```
+---
+
+## 📃 Full example config.yaml
+This is how a config file could look like. Keep in mind that this is just an example how a config.yaml could be structured and some keywords might not even make sense for some containers.
+
+```yaml
+containers:
+  audiobookshelf:
+    ntfy_topic: media
+    ntfy_tags: "books, headphones"     
+    keywords:
+      - "requested download"
+      - "downloaded item"
+      - "user"
+      - "login"
+      - regex: 'download (failed|error)'    # Matches "download failed" or "download error"
+        
+  crowdsec:
+    ntfy_topic: security
+    ntfy_tags: "shield, rotating_light"   # Shield and rotating light: security alerts
+    keywords:
+      - "blocked"
+
+  vaultwarden:
+    ntfy_topic: security
+    ntfy_tags: "lock, key"                # Lock and key: identity/authentication
+    keywords:
+      - "login"
+      - "incorrect"
+      - "username"
+      - "password"
+
+  syncthing:
+    ntfy_topic: maintenance
+    ntfy_tags: "arrows_counterclockwise, recycle"  # Refresh arrows and recycle: sync operations
+    keywords:
+      - "sync error"
+      - "failed to connect"
+    keywords_with_attachment:
+      - regex: 'fatal'                     
+global_keywords:
+  keywords_with_attachment:
+    - regex: "\\b(critical|panic)\\b"
+    - "error"
+    - "segfault"
+    - "panic"
+    - "fatal"
+    - "failed login"
+
+ntfy:
+  url: "http://192.168.178.184:82"   # URL of your ntfy instance
+  topic: "logsend"                   # Default topic for notifications (overridden by container-specific topics)
+  token: "token"                     # Authentication token (if required)
+  tag
+
+settings:
+  keyword_notification_cooldown: 10
+  log_level: "INFO"
+```

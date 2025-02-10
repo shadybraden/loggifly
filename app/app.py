@@ -57,10 +57,10 @@ def load_config():
     # Ergänze oder überschreibe Konfigurationswerte mit Umgebungsvariablen
     config["ntfy"] = {
         "url": os.getenv("NTFY_URL", config.get("ntfy", {}).get("url", "")),
-        "topic": os.getenv("NTFY_TOPIC", config.get("ntfy", {}).get("topic", "")),
+        "topic": os.getenv("NTFY_TOPIC", config.get("ntfy", {}).get("topic", "logsend")),
         "token": os.getenv("NTFY_TOKEN", config.get("ntfy", {}).get("token", "")),
-        "priority": os.getenv("NTFY_PRIORITY", config.get("ntfy", {}).get("priority", "default")),
-        "tags": os.getenv("NTFY_TAG", config.get("ntfy", {}).get("tags", "warning")),
+        "priority": os.getenv("NTFY_PRIORITY", config.get("ntfy", {}).get("priority", "3")),
+        "tags": os.getenv("NTFY_TAGS", config.get("ntfy", {}).get("tags", "warning")),
     }
     config["containers"] = config.get("containers", [])
     #config["keywords"] = config.get("keywords", ["error", "warning", "critical"])
