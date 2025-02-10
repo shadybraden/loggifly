@@ -25,10 +25,10 @@
 ## 🚀 Features
 
 - **🔍 Keyword & Regex Monitoring**: Track specific keywords or complex regex patterns in container logs.  
-- **🐳 Global and per container kewords**: You can specify keywords per container or for all containers.  
+- **🐳 Fine-Grained Keyword Control**: You can specify keywords per container or for all containers.  
 - **📁 Log Attachments**: Automatically attach a file with the last 50 lines of logs to notifications.  
 - **⏱ Rate Limiting**: Avoid spam with per-keyword/container cooldowns.  
-- **🔧 YAML Configuration**: Define containers, keywords, and notifications in a simple config file.  
+- **🔧 YAML Configuration**: Define containers, keywords, and notification settings in a simple config file.  
 - **📤 ntfy Integration**: Send alerts to any ntfy-compatible service (self-hosted or public).
   - **🥳 Priority & Tags**: Customize notification priority and tags/emojis.  
 
