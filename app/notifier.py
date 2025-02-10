@@ -4,15 +4,7 @@ import os
 import urllib.parse
 
 
-logging.basicConfig(
-    level=logging.DEBUG,  # Ändere dies von INFO zu DEBUG
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler("monitor.log", mode="w"),
-        logging.StreamHandler()
-    ]
-)
-
+logging.getLogger(__name__)
 
 
 def send_ntfy_notification(config, container_name, message, keyword=None, file_name=None):

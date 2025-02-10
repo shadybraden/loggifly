@@ -2,3 +2,7 @@ monitor.log
 testing
 docker-compose.yaml
 app/config.yaml
+app/__pycache__
+.venv
+.vscode
+__pycache__

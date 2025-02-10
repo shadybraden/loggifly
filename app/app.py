@@ -154,7 +154,7 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
                 client.close()
                 break
             try:
-                log_line_decoded = str(log_line.decode("utf-8")).strip()
+                log_line_decoded = str(log_line.decode("utf-8")).strip().lower()
                 #logging.debug("[%s] %s", container.name, log_line_decoded)
                 if log_line_decoded:
                     for keyword in local_keywords + local_keywords_with_file:
@@ -165,7 +165,7 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
                                     if keyword in local_keywords_with_file:
                                         logging.info(f"Regex-Keyword (with attachment) '{regex_keyword}' was found in {container.name}: {log_line_decoded}")
                                         file_name = log_attachment(container)
-                                        send_ntfy_notification(config, container.name, log_line_decoded, keyword, file_name)
+                                        send_ntfy_notification(config, container.name, log_line_decoded, regex_keyword, file_name)
                                     else:
                                         send_ntfy_notification(config, container.name, log_line_decoded, keyword)
                                         logging.info(f"Regex-Keyword '{keyword}' was found in {container.name}: {log_line_decoded}")
