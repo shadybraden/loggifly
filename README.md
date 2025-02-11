@@ -51,9 +51,9 @@ The `config.yaml` file is divided into four main sections:
 
 ---
 
-## ntfy configuration
+## `ntfy` section
 
-FEHLT NOCH
+In this section you can configure your ntfy settings. URL and token are required. Tags, topic and priority have default values. They can be set globally in this section but can also be configured per container. 
 
 ## 🐳 `containers` Section
 
@@ -220,7 +220,7 @@ ntfy:
   url: "http://192.168.178.184:82"   # URL of your ntfy instance
   topic: "logsend"                   # Default topic for notifications (overridden by container-specific topics)
   token: "token"                     # Authentication token (if required)
-  tag
+  tags: "warning"
 
 settings:
   keyword_notification_cooldown: 10
