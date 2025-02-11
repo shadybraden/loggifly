@@ -53,7 +53,17 @@ The `config.yaml` file is divided into four main sections:
 
 ## `ntfy` section
 
-In this section you can configure your ntfy settings. URL and token are required. Tags, topic and priority have default values. They can be set globally in this section but can also be configured per container. 
+In this section, you can configure your ntfy settings. The `url` and `token` are required parameters. The `tags`, `topic`, and `priority` have default values and can be defined globally in this section or individually for each container.
+
+```yaml
+ntfy:
+  url: "http://192.168.178.184:8080"   # URL of your ntfy instance
+  topic: "loggifly"                   # Default topic for notifications (overridden by container-specific topics)
+  token: "your_token"
+  tags: warning                       # Default tag (overridden by container-specific tags)
+  priority: 3 # Default valuw
+
+---
 
 ## 🐳 `containers` Section
 
