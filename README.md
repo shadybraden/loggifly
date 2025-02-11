@@ -2,8 +2,8 @@
 
 <br />
 <div align="center">
-  <a href="clemcer/Loggifly">
-    <img src="/icon.png" alt="Logo" width="100" height="100">
+  <a href="clemcer/logsend">
+    <img src="/icon.png" alt="Logo" width="300" height="auto">
   </a>
 
 <h1 align="center">Loggifly</h1>
