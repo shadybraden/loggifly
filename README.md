@@ -2,23 +2,23 @@
 
 <br />
 <div align="center">
-  <a href="clemcer/logsend">
+  <a href="clemcer/Loggifly">
     <img src="/icon.png" alt="Logo" width="100" height="100">
   </a>
 
-<h1 align="center">Logsend</h1>
+<h1 align="center">Loggifly</h1>
 
   <p align="center">
-    <a href="https://github.com/clemcer/logsend/issues">Report Bug</a>
+    <a href="https://github.com/clemcer/Loggifly/issues">Report Bug</a>
     ·
-    <a href="https://github.com/clemcer/logsend/issues">Request Feature</a>
+    <a href="https://github.com/clemcer/Loggifly/issues">Request Feature</a>
   </p>
 </div>
 
 <br>
 
 
-**Logsend** is a lightweight tool for monitoring Docker container logs and sending notifications when specific keywords are detected. It supports both plain text and regular expression (regex) keywords and can attach the last 50 lines of a log file when a match is found. 🚀
+**Loggifly** is a lightweight tool for monitoring Docker container logs and sending notifications when specific keywords are detected. It supports both plain text and regular expression (regex) keywords and can attach the last 50 lines of a log file when a match is found. 🚀
 
 ---
 
@@ -34,10 +34,10 @@
 
 ---
 
-# Logsend Configuration 
+# Loggifly Configuration 
 
-While there are some settings you can set via environment variables most of the configuration for Logsend happens in the config.yaml file.
-You can find the installation walkthrough [here](https://github.com/clemcer/logsend#installation-via-docker-compose) if you are impatient and want to skip the config explanation.
+While there are some settings you can set via environment variables most of the configuration for Loggifly happens in the config.yaml file.
+You can find the installation walkthrough [here](https://github.com/clemcer/Loggifly#installation-via-docker-compose) if you are impatient and want to skip the config explanation.
 
 ---
 
@@ -102,7 +102,7 @@ global_keywords:
 
 ## ⚙️ `settings` Section
 
-This section defines global behavior for Logsend.
+This section defines global behavior for Loggifly.
 
 ### Example:
 
@@ -129,11 +129,11 @@ These are the settings you can set via docker environment variables in either yo
 |-----------------------------------|----------------------------------------------------------|----------|
 | **NTFY_URL**                      | URL of the ntfy notification service.                    | _N/A_    |
 | **NTFY_TOKEN**                    | Authentication token for ntfy.                           | _N/A_    |
-| **NTFY_TOPIC**                    | Notification topic for ntfy.                             | logsend  |
+| **NTFY_TOPIC**                    | Notification topic for ntfy.                             | Loggifly  |
 | **NTFY_TAGS**                     | Ntfy [Tags/Emojis](https://docs.ntfy.sh/emojis/) for ntfy notifications.                 | warning  |
 | **NTFY_PRIORITY**                 | Notification [priority](https://docs.ntfy.sh/publish/?h=priori#message-priority) for ntfy messages.                 | 3 / default |
 | **KEYWORD_NOTIFICATION_COOLDOWN** | Cooldown period (in seconds) per container per keyword before a new message can be sent  | 5        |
-| **LOG_LEVEL**                     | Log Level for Logsend container logs.                    | INFO     |
+| **LOG_LEVEL**                     | Log Level for Loggifly container logs.                    | INFO     |
 
 
 ## 🛠 Installation
@@ -147,12 +147,12 @@ If you want, you can uncomment the environment section to set some settings dire
 ```yaml
 version: "3.8"
 services:
-  logsend:
-    image: ghcr.io/clemcer/logsend:latest
-    container_name: logsend
+  Loggifly:
+    image: ghcr.io/clemcer/Loggifly:latest
+    container_name: Loggifly
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./logsend/config/config.yaml:/app/config.yaml # specify the path of your condig file on the left side of the mapping
+      - ./Loggifly/config/config.yaml:/app/config.yaml # specify the path of your condig file on the left side of the mapping
     #environment:
     #   NTFY_URL: "http://your.ntfy.server:port"
     #   NTFY_TOPIC: "your_topic"
@@ -218,7 +218,7 @@ global_keywords:
 
 ntfy:
   url: "http://192.168.178.184:82"   # URL of your ntfy instance
-  topic: "logsend"                   # Default topic for notifications (overridden by container-specific topics)
+  topic: "Loggifly"                   # Default topic for notifications (overridden by container-specific topics)
   token: "token"                     # Authentication token (if required)
   tags: "warning"
 
