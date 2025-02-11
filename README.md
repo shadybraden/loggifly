@@ -136,7 +136,7 @@ These are the global settings you can set via docker environment variables in ei
 | **LOG_LEVEL**                     | Log Level for Loggifly container logs.                    | INFO     |
 | **DISBLE_START_MESSAGE**          | Disable startup message.                                  | False     |
 | **DISBLE_SHUTDOWN_MESSAGE**       | Disable shutdown message.                                 | False     |
-| **ATTACHMENT_LINE_NUMBER**        | Define the number of Log Lines in the attachment file     | False     |
+| **ATTACHMENT_LINES**        | Define the number of Log Lines in the attachment file     | False     |
 
 
 

@@ -106,11 +106,11 @@ def detect_config_changes():
 
 def log_attachment(container):
     if isinstance(config.get("containers").get(container.name, {}), dict):
-        lines = int(config.get("containers", {}).get(container.name, {}).get("attachment_lines_numer") or os.getenv("ATTACHMENT_LINES_NUMBER", config.get("settings", {}).get("attachment_lines_numer", 50)))
+        lines = int(config.get("containers", {}).get(container.name, {}).get("attachment_lines") or os.getenv("ATTACHMENT_LINES", config.get("settings", {}).get("attachment_lines", 50)))
     else:
-        lines = int(os.getenv("ATTACHMENT_LINES_NUMBER", config.get("settings", {}).get("attachment_lines_numer", 50)))
+        lines = int(os.getenv("ATTACHMENT_LINES", config.get("settings", {}).get("attachment_lines", 50)))
 
-    file_name = f"last_{lines}_log-lines_from_{container.name}.log"
+    file_name = f"last_{lines}_lines_from_{container.name}.log"
 
     log_tail = container.logs(tail=lines).decode("utf-8")
     with open(file_name, "w") as file:  

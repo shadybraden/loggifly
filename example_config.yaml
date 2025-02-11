@@ -241,7 +241,7 @@ settings:
   log-level: INFO
   # Cooldown (in seconds) to avoid sending repeated notifications for the same keyword.
   keyword_notification_cooldown: 5
-  attachment_lines_numer: 50
+  attachment_lines: 50
   disable_start_message: False
   disable_shutdown_message: False
 
