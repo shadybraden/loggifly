@@ -62,7 +62,7 @@ ntfy:
   token: "your_token"
   tags: warning                       # Default tag (overridden by container-specific tags)
   priority: 3 # Default valuw
-
+```
 ---
 
 ## 🐳 `containers` Section
