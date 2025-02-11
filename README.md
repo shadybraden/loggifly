@@ -3,7 +3,7 @@
 <br />
 <div align="center">
   <a href="clemcer/logsend">
-    <img src="/icon.png" alt="Logo" width="100" height="100">
+    <img src="/icon.png" alt="Logo" width="150" height="auto">
   </a>
 
 <h1 align="center">Logsend</h1>
