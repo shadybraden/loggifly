@@ -14,9 +14,15 @@ def send_ntfy_notification(config, container_name, message, keyword=None, file_n
     ntfy_url = config["ntfy"]["url"]
     ntfy_token = config["ntfy"]["token"]
 
-   # if isinstance(config.get("containers").get(container_name, {}), dict):
-    ntfy_topic = config.get("containers", {}).get(container_name, {}).get("ntfy_topic") or config.get("ntfy", {}).get("topic", "")
-    ntfy_tags = config.get("containers", {}).get(container_name, {}).get("ntfy_tags") or config.get("ntfy", {}).get("tags", "warning")
+    if isinstance(config.get("containers").get(container_name, {}), dict):
+        ntfy_topic = config.get("containers", {}).get(container_name, {}).get("ntfy_topic") or config.get("ntfy", {}).get("topic", "")
+        ntfy_tags = config.get("containers", {}).get(container_name, {}).get("ntfy_tags") or config.get("ntfy", {}).get("tags", "warning")
+        ntfy_priority = config.get("containers", {}).get(container_name, {}).get("ntfy_priority") or config.get("ntfy", {}).get("priority", "3")
+
+    else:
+        ntfy_topic=  config.get("ntfy", {}).get("topic", "")
+        ntfy_tags = config.get("ntfy", {}).get("tags", "warning")
+        ntfy_priority = config.get("ntfy", {}).get("priority", "warning")
 
 
    
@@ -28,7 +34,8 @@ def send_ntfy_notification(config, container_name, message, keyword=None, file_n
     headers = {
         "Authorization": f"Bearer {ntfy_token}",
         "Tags": f"{ntfy_tags}",
-        "Icon": "https://raw.githubusercontent.com/clemcer/logsend/refs/heads/main/icon.png?token=GHSAT0AAAAAAC5ITTW6BMYID4P2XDAGI46MZ5LMHGA"
+        "Icon": "https://raw.githubusercontent.com/clemcer/logsend/refs/heads/main/icon.png?token=GHSAT0AAAAAAC5ITTW6BMYID4P2XDAGI46MZ5LMHGA",
+        "Priority": f"{ntfy_priority}"
     }
 
     if keyword is None:

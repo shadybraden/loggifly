@@ -129,7 +129,7 @@ These are the settings you can set via docker environment variables in either yo
 |-----------------------------------|----------------------------------------------------------|----------|
 | **NTFY_URL**                      | URL of the ntfy notification service.                    | _N/A_    |
 | **NTFY_TOKEN**                    | Authentication token for ntfy.                           | _N/A_    |
-| **NTFY_TOPIC**                    | Notification topic for ntfy.                             | Loggifly  |
+| **NTFY_TOPIC**                    | Notification topic for ntfy.                             | loggifly  |
 | **NTFY_TAGS**                     | Ntfy [Tags/Emojis](https://docs.ntfy.sh/emojis/) for ntfy notifications.                 | warning  |
 | **NTFY_PRIORITY**                 | Notification [priority](https://docs.ntfy.sh/publish/?h=priori#message-priority) for ntfy messages.                 | 3 / default |
 | **KEYWORD_NOTIFICATION_COOLDOWN** | Cooldown period (in seconds) per container per keyword before a new message can be sent  | 5        |

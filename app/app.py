@@ -32,7 +32,9 @@ def set_logging(config):
     logging.warning("This is a Warning-Message")
 
 def handle_signal(signum, frame):
-    send_ntfy_notification(config, "Logsend:", "The programm is shutting down.")
+    if bool(os.getenv("DISABLE_SHUTDOWN_MESSAGE", config.get("settings", {}).get("disable_shutdown_message", False))) == False:
+        send_ntfy_notification(config, "Loggifly:", "The programm is shutting down.")
+
     logging.info(f"Signal {signum} received. shutting down...")
     shutdown_event.set() 
 
@@ -57,7 +59,7 @@ def load_config():
     # Ergänze oder überschreibe Konfigurationswerte mit Umgebungsvariablen
     config["ntfy"] = {
         "url": os.getenv("NTFY_URL", config.get("ntfy", {}).get("url", "")),
-        "topic": os.getenv("NTFY_TOPIC", config.get("ntfy", {}).get("topic", "logsend")),
+        "topic": os.getenv("NTFY_TOPIC", config.get("ntfy", {}).get("topic", "loggifly")),
         "token": os.getenv("NTFY_TOKEN", config.get("ntfy", {}).get("token", "")),
         "priority": os.getenv("NTFY_PRIORITY", config.get("ntfy", {}).get("priority", "3")),
         "tags": os.getenv("NTFY_TAGS", config.get("ntfy", {}).get("tags", "warning")),
@@ -103,8 +105,12 @@ def detect_config_changes():
 
 
 def log_attachment(container):
-    lines = 50
-    file_name = f"last_{lines}_log-lines_from_{container.name}.txt"
+    if isinstance(config.get("containers").get(container.name, {}), dict):
+        lines = int(config.get("containers", {}).get(container.name, {}).get("attachment_lines_numer") or os.getenv("ATTACHMENT_LINES_NUMBER", config.get("settings", {}).get("attachment_lines_numer", 50)))
+    else:
+        lines = int(os.getenv("ATTACHMENT_LINES_NUMBER", config.get("settings", {}).get("attachment_lines_numer", 50)))
+
+    file_name = f"last_{lines}_log-lines_from_{container.name}.log"
 
     log_tail = container.logs(tail=lines).decode("utf-8")
     with open(file_name, "w") as file:  
@@ -122,9 +128,9 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
     local_keywords = keywords.copy()
     local_keywords_with_file = keywords_with_file.copy()
 
-    container_config = config.get("containers", {}).get(container.name)
-    if container_config is None:
-        container_config = []
+    # container_config = config.get("containers", {}).get(container.name)
+    # if container_config is None:
+    #     container_config = []
 
     if isinstance(config["containers"][container.name], list):
         local_keywords.extend(config["containers"][container.name])
@@ -231,7 +237,9 @@ def monitor_docker_logs(config):
     logging.info(f"These containers are being monitored: {[c.name for c in containers_to_monitor]} \n \
                     These containers from your config are not running {unmonitored_containers_str}")
 
-    send_ntfy_notification(config, "Logsend", f"The programm is running and monitoring these selected Containers:\n - {containers_to_monitor_str}, \n\nThese selected Containers are not running:\n - {unmonitored_containers_str}")
+    if bool(os.getenv("DISABLE_START_MESSAGE", config.get("settings", {}).get("disable_start_message", False))) == False:
+        send_ntfy_notification(config, "Loggifly", f"The programm is running and monitoring these selected Containers:\n - {containers_to_monitor_str} \n\nThese selected Containers are not running:\n - {unmonitored_containers_str}")
+    
     for container in containers_to_monitor:
         thread = threading.Thread(target=monitor_container_logs, args=(config, client, container, global_keywords, global_keywords_with_file), daemon=True)
         threads.append(thread)
@@ -261,10 +269,10 @@ def monitor_docker_logs(config):
         thread.join()
 
 if __name__ == "__main__":
-    logging.info("Logsend started")
+    logging.info("Loggifly started")
     config = load_config()
     set_logging(config)
     logging.debug(config)
-   # send_ntfy_notification(config, "Logsend:", "The programm is running and monitoring the logs of your selected containers.")
+   # send_ntfy_notification(config, "Loggifly:", "The programm is running and monitoring the logs of your selected containers.")
     monitor_docker_logs(config)
 

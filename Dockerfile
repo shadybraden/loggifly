@@ -9,7 +9,7 @@ WORKDIR /app
 COPY requirements.txt .
 
 ##
-LABEL org.opencontainers.image.source="https://github.com/clemcer/logsend"
+LABEL org.opencontainers.image.source="https://github.com/clemcer/loggifly"
 
 # Installiere die Abhängigkeiten
 RUN pip install --no-cache-dir -r requirements.txt
@@ -17,7 +17,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Kopiere die restlichen Dateien (Skript und Konfiguration) in den Container
 COPY icon.png .
 COPY app/notifier.py .
-COPY config.yaml .
 COPY app/app.py .
 
 

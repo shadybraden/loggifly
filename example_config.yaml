@@ -15,7 +15,8 @@ containers:
   # -------------------- Media & Entertainment --------------------
   audiobookshelf:
     ntfy_topic: media
-    ntfy_tags: "books, headphones"       # Books and headphones: audiobooks
+    ntfy_tags: "books, headphones"       
+    ntfy_priority: "3"
     keywords:
       - "requested download"
       - "downloaded item"
@@ -240,6 +241,9 @@ settings:
   log-level: INFO
   # Cooldown (in seconds) to avoid sending repeated notifications for the same keyword.
   keyword_notification_cooldown: 5
+  attachment_lines_numer: 50
+  disable_start_message: False
+  disable_shutdown_message: False
 
 ###############################################################################
 # End of Configuration
