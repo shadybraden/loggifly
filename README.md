@@ -25,34 +25,40 @@
 ## 🚀 Features
 
 - **🔍 Keyword & Regex Monitoring**: Track specific keywords or complex regex patterns in container logs.  
-- **🐳 Global and per container kewords**: You can specify keywords per container or for all containers.  
-- **📁 Log Attachments**: Automatically attach a file with the last 50 lines of logs to notifications.  
+- **🐳 Fine-Grained Keyword Control**: You can specify keywords per container or for all containers.  
+- **📁 Log Attachments**: Automatically attach a file with the last 50 log lines to notifications.  
 - **⏱ Rate Limiting**: Avoid spam with per-keyword/container cooldowns.  
-- **🔧 YAML Configuration**: Define containers, keywords, and notifications in a simple config file.  
+- **🔧 YAML Configuration**: Define containers, keywords, and notification settings in a simple config file.  
 - **📤 ntfy Integration**: Send alerts to any ntfy-compatible service (self-hosted or public).
-  - **🥳 Priority & Tags**: Customize notification priority and tags/emojis.  
+  - **🥳 Priority, Tags & Topic**: Customize notification priority, Tags/emojis and the topic globally and/or per container
 
 ---
 
 # Logsend Configuration 
 
-You can find the Installation guide [here](https://github.com/clemcer/logsend#installation-via-docker-compose). But first you should create your config file.
 While there are some settings you can set via environment variables most of the configuration for Logsend happens in the config.yaml file.
+You can find the installation walkthrough [here](https://github.com/clemcer/logsend#installation-via-docker-compose) if you are impatient and want to skip the config explanation.
 
 ---
 
 ## 📁 Basic Structure
 
-The `config.yaml` file is divided into three main sections:
-1. **`containers`**: Define which containers to monitor and their specific keywords.
-2. **`global_keywords`**: Keywords that apply to **all** monitored containers.
-3. **`settings`**: Global settings like cooldowns and log levels.
+The `config.yaml` file is divided into four main sections:
+1. **ntfy configuration**: set your ntfy url, topic, token, priority and tags
+2. **`containers`**: Define which containers to monitor and their specific keywords.
+3. **`global_keywords`**: Keywords that apply to **all** monitored containers.
+4. **`settings`**: Global settings like cooldowns and log levels.
 
 ---
+
+## `ntfy` section
+
+In this section you can configure your ntfy settings. URL and token are required. Tags, topic and priority have default values. They can be set globally in this section but can also be configured per container. 
 
 ## 🐳 `containers` Section
 
 This section defines the containers you want to monitor and the keywords/regex patterns to look for.
+You can also set the topic, tags and priority for your ntfy notification which will be used over the global configuration
 
 ### Example:
 ```yaml
@@ -125,8 +131,8 @@ These are the settings you can set via docker environment variables in either yo
 | **NTFY_TOKEN**                    | Authentication token for ntfy.                           | _N/A_    |
 | **NTFY_TOPIC**                    | Notification topic for ntfy.                             | logsend  |
 | **NTFY_TAGS**                     | Ntfy [Tags/Emojis](https://docs.ntfy.sh/emojis/) for ntfy notifications.                 | warning  |
-| **NTFY_PRIORITY**                 | Notification [priority](https://docs.ntfy.sh/publish/?h=priori#message-priority) for ntfy messages.                 | 3 /default |
-| **KEYWORD_NOTIFICATION_COOLDOWN** | Cooldown period (in seconds) per container per keyword before new message can be sent  | 5        |
+| **NTFY_PRIORITY**                 | Notification [priority](https://docs.ntfy.sh/publish/?h=priori#message-priority) for ntfy messages.                 | 3 / default |
+| **KEYWORD_NOTIFICATION_COOLDOWN** | Cooldown period (in seconds) per container per keyword before a new message can be sent  | 5        |
 | **LOG_LEVEL**                     | Log Level for Logsend container logs.                    | INFO     |
 
 
@@ -134,7 +140,9 @@ These are the settings you can set via docker environment variables in either yo
 
 ### Installation via Docker Compose
 
-1. Create a `docker-compose.yaml` file in your project with the following content. If you want to set some settings here uncomment the environment variables
+1. Create a folder on your system, place the [config.yaml](config.yaml) there and edit it to fit your needs and preferences. 
+2. Create a `docker-compose.yaml` file in your project and adjust it to your needs. In the volumes section you will have to specify the path to your config file.
+If you want, you can uncomment the environment section to set some settings directly in your compose. (Or use an .env file)
 
 ```yaml
 version: "3.8"
@@ -144,8 +152,8 @@ services:
     container_name: logsend
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./logsend/config/config.yaml:/app/config.yaml
-    environment:
+      - ./logsend/config/config.yaml:/app/config.yaml # specify the path of your condig file on the left side of the mapping
+    #environment:
     #   NTFY_URL: "http://your.ntfy.server:port"
     #   NTFY_TOPIC: "your_topic"
     #   NTFY_TOKEN: "your_token"
@@ -155,7 +163,7 @@ services:
     restart: unless-stopped
 ```
 
-2. Then, build and run the container:
+2. Then, run the container:
 
 ```bash
 docker-compose up -d
@@ -179,13 +187,13 @@ containers:
         
   crowdsec:
     ntfy_topic: security
-    ntfy_tags: "shield, rotating_light"   # Shield and rotating light: security alerts
+    ntfy_tags: "shield, rotating_light"  
     keywords:
       - "blocked"
 
   vaultwarden:
     ntfy_topic: security
-    ntfy_tags: "lock, key"                # Lock and key: identity/authentication
+    ntfy_tags: "lock, key"   
     keywords:
       - "login"
       - "incorrect"
@@ -193,8 +201,7 @@ containers:
       - "password"
 
   syncthing:
-    ntfy_topic: maintenance
-    ntfy_tags: "arrows_counterclockwise, recycle"  # Refresh arrows and recycle: sync operations
+    ntfy_tags: "arrows_counterclockwise, recycle" 
     keywords:
       - "sync error"
       - "failed to connect"
@@ -213,7 +220,7 @@ ntfy:
   url: "http://192.168.178.184:82"   # URL of your ntfy instance
   topic: "logsend"                   # Default topic for notifications (overridden by container-specific topics)
   token: "token"                     # Authentication token (if required)
-  tag
+  tags: "warning"
 
 settings:
   keyword_notification_cooldown: 10
