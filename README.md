@@ -123,7 +123,7 @@ settings:
 
 ## Enviroment Variables
 
-These are the settings you can set via docker environment variables in either your docker compose or .env file
+These are the global settings you can set via docker environment variables in either your docker compose or .env file
 
 | Variables                         | Description                                              | Default  |
 |-----------------------------------|----------------------------------------------------------|----------|
@@ -134,6 +134,11 @@ These are the settings you can set via docker environment variables in either yo
 | **NTFY_PRIORITY**                 | Notification [priority](https://docs.ntfy.sh/publish/?h=priori#message-priority) for ntfy messages.                 | 3 / default |
 | **KEYWORD_NOTIFICATION_COOLDOWN** | Cooldown period (in seconds) per container per keyword before a new message can be sent  | 5        |
 | **LOG_LEVEL**                     | Log Level for Loggifly container logs.                    | INFO     |
+| **DISBLE_START_MESSAGE**          | Disable startup message.                                  | False     |
+| **DISBLE_SHUTDOWN_MESSAGE**       | Disable shutdown message.                                 | False     |
+| **ATTACHMENT_LINE_NUMBER**        | Define the number of Log Lines in the attachment file     | False     |
+
+
 
 
 ## 🛠 Installation
