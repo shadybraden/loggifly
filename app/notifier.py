@@ -28,7 +28,7 @@ def send_ntfy_notification(config, container_name, message, keyword=None, file_n
     headers = {
         "Authorization": f"Bearer {ntfy_token}",
         "Tags": f"{ntfy_tags}",
-        "Icon": "/app/icon.png"
+        "Icon": "https://raw.githubusercontent.com/clemcer/logsend/refs/heads/main/icon.png?token=GHSAT0AAAAAAC5ITTW6BMYID4P2XDAGI46MZ5LMHGA"
     }
 
     if keyword is None:

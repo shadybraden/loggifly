@@ -225,13 +225,13 @@ def monitor_docker_logs(config):
 
     containers_to_monitor = [c for c in containers if c.name in selected_containers]
 
-    containers_to_monitor_str = "\n".join(c.name for c in containers_to_monitor)   
-    unmonitored_containers_str = "\n".join(c for c in selected_containers if c not in [c.name for c in containers_to_monitor])
+    containers_to_monitor_str = "\n - ".join(c.name for c in containers_to_monitor)   
+    unmonitored_containers_str = "\n - ".join(c for c in selected_containers if c not in [c.name for c in containers_to_monitor])
 
     logging.info(f"These containers are being monitored: {[c.name for c in containers_to_monitor]} \n \
                     These containers from your config are not running {unmonitored_containers_str}")
 
-    send_ntfy_notification(config, "Logsend", f"The programm is running and monitoring these selected Containers:\n{containers_to_monitor_str}, \n\nThese selected Containers are not running:\n{unmonitored_containers_str}")
+    send_ntfy_notification(config, "Logsend", f"The programm is running and monitoring these selected Containers:\n - {containers_to_monitor_str}, \n\nThese selected Containers are not running:\n - {unmonitored_containers_str}")
     for container in containers_to_monitor:
         thread = threading.Thread(target=monitor_container_logs, args=(config, client, container, global_keywords, global_keywords_with_file), daemon=True)
         threads.append(thread)
