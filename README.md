@@ -32,7 +32,7 @@
 - **📁 Log Attachments**: Automatically attach a file with the last 50 log lines to notifications.  
 - **⏱ Rate Limiting**: Avoid spam with per-keyword/container cooldowns.  
 - **🔧 YAML Configuration**: Define containers, keywords, and notification settings in a simple config file.  
-- ** Automatic Restarts**: The programm restarts when it detects that the config file has been changed.
+- **⚡ Auto-Restart on Config Change**: The programm restarts when it detects that the config file has been changed.
 
 
 ---
