@@ -51,7 +51,6 @@ You can find a detailed walkthrough of the config file [here](https://github.com
 1. Create a folder on your system, place your config.yaml there and edit it to fit your needs and preferences. You can find a short example config with explaininf comments [here](https://github.com/clemcer/loggifly/blob/main/config.yaml). Or you take a look at the detailed config explanation [here](https://github.com/clemcer/loggifly/blob/main/walkthrough.md).
 
 
-### Installation via Docker Compose
 
 2. Create a `docker-compose.yaml` file in your project and adjust it to your needs. In the volumes section you will have to specify the path to your config file.
 If you want, you can set all of the global settings (that are not defined per container) in your compose via environment variables. Here is a list of the options. (Or use an .env file)
@@ -76,4 +75,6 @@ docker-compose up -d
 ---
 
 License
+---
 [MIT](https://github.com/clemcer/loggifly/blob/main/LICENSE)
+---
