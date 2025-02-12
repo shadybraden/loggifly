@@ -49,47 +49,7 @@ You can find a detailed walkthrough of the config file [here](https://github.com
 
 
 1. Create a folder on your system, place your config.yaml there and edit it to fit your needs and preferences. You can find a short example config with explaininf comments [here](https://github.com/clemcer/loggifly/blob/main/config.yaml). Or you take a look at the detailed config explanation [here](https://github.com/clemcer/loggifly/blob/main/walkthrough.md).
-```yaml
-containers:
-    vaultwarden:
-      ntfy_tags: closed_lock_with_key   # if you use ntfy you can set these settings per container to overwite global settings
-      ntfy_priority: 5
-      ntfy_topic: security
-      keywords:
-        - regex: (username|password).*incorrect   # you can use regex expressions.
-        - login
-      keywords_with_attachment:                   # send a file with the last log lines. You can set the number of lines. See 'settings' section.
-        - regex: ^\[[^\]]+\]\[[^\]]+\]\[(ERROR)\] # catches all lines with Log level set to ERROR at the beginning (after the timestamp)
 
-    audiobookshelf:           # if you don't need all the extra settings from ntfy or an attachment you can directly list your keywords
-      - failed login
-      - requested download
-      - downloaded item 
- 
-global_keywords:
-  keywords:
-    - segfault
-    - panic
-  keywords_with_attachment:
-    - fatal
-
-notifications:                       # Here you can specify your ntfy or apprise settings. Or both. 
-  ntfy:                              # You could also set these settings via environment variables.                                 
-    url: "your url"
-    topic: "your topic"
-    token: "token"
-    tags: kite, mag
-  apprise:
-    url: discord:// # Your apprise url. For example for Discord
-  
-settings:                            # These are settings you could also set via environment variables
-  log-level: INFO                    # Set the log level (DEBUG, INFO, ERROR, FATAL)
-  keyword_notification_cooldown: 5   # Set the time the programm should wait before it sends you a notificatin from the same service and keyword
-  attachment_lines: 10               # Set the number of log lines in the log file attached to your notification 
-  disable_start_message: False       # Disable the message you get when the programm starts
-  disable_shutdown_message: False    # Disable the message you get when the programm shuts down
-  disable_restart: False             # Disable that the programm restarts when your config file changes
-```
 
 ### Installation via Docker Compose
 
