@@ -10,7 +10,7 @@ import signal
 from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-from notifier import send_ntfy_notification
+from notifier import send_notification
 
 
 shutdown_event = threading.Event()
@@ -33,7 +33,7 @@ def set_logging(config):
 
 def handle_signal(signum, frame):
     if bool(os.getenv("DISABLE_SHUTDOWN_MESSAGE", config.get("settings", {}).get("disable_shutdown_message", False))) == False:
-        send_ntfy_notification(config, "Loggifly:", "The programm is shutting down.")
+        send_notification(config, "Loggifly:", "The programm is shutting down.")
 
     logging.info(f"Signal {signum} received. shutting down...")
     shutdown_event.set() 
@@ -55,17 +55,27 @@ def load_config():
             logging.info("Konfigurationsdatei erfolgreich geladen.")
     except FileNotFoundError:
         logging.warning("config.yaml nicht gefunden. Verwende nur Umgebungsvariablen.")
+    config.setdefault("notifications", {})
 
-    # Ergänze oder überschreibe Konfigurationswerte mit Umgebungsvariablen
-    config["ntfy"] = {
-        "url": os.getenv("NTFY_URL", config.get("ntfy", {}).get("url", "")),
-        "topic": os.getenv("NTFY_TOPIC", config.get("ntfy", {}).get("topic", "loggifly")),
-        "token": os.getenv("NTFY_TOKEN", config.get("ntfy", {}).get("token", "")),
-        "priority": os.getenv("NTFY_PRIORITY", config.get("ntfy", {}).get("priority", "3")),
-        "tags": os.getenv("NTFY_TAGS", config.get("ntfy", {}).get("tags", "warning")),
+    allowed_keys = {"notifications", "settings", "containers", "global_keywords"}
+    for key in list(config.keys()):  # Wichtiger Hinweis: Liste der Keys erstellen, um die Iteration zu sichern.
+        if key not in allowed_keys:
+            del config[key]
+
+
+    config["notifications"]["ntfy"] = {
+        "url": os.getenv("NTFY_URL", config["notifications"].get("ntfy", {}).get("url", "")),
+        "topic": os.getenv("NTFY_TOPIC", config["notifications"].get("ntfy", {}).get("topic", "loggifly")),
+        "token": os.getenv("NTFY_TOKEN", config["notifications"].get("ntfy", {}).get("token", "")),
+        "priority": os.getenv("NTFY_PRIORITY", config["notifications"].get("ntfy", {}).get("priority", "3")),
+        "tags": os.getenv("NTFY_TAGS", config["notifications"].get("ntfy", {}).get("tags", "warning")),
+    }
+
+    config["notifications"]["apprise"] = {
+        "url": os.getenv("APPRISE_URL", config["notifications"].get("apprise", {}).get("url", "")),
     }
     config["containers"] = config.get("containers", [])
-    #config["keywords"] = config.get("keywords", ["error", "warning", "critical"])
+    
     return config
 
 
@@ -128,9 +138,6 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
     local_keywords = keywords.copy()
     local_keywords_with_file = keywords_with_file.copy()
 
-    # container_config = config.get("containers", {}).get(container.name)
-    # if container_config is None:
-    #     container_config = []
 
     if isinstance(config["containers"][container.name], list):
         local_keywords.extend(config["containers"][container.name])
@@ -141,6 +148,8 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
             local_keywords.extend(config["containers"][container.name]["keywords"])
     else:
         logging.error("Error in config: not a list or dict not  properly configured with keywords_with_attachment and keywords attributes")
+
+    logging.debug(f"{container.name} - Keywords: {local_keywords}, keywords with attachment: {local_keywords_with_file}")
 
     time_per_keyword = { }
     for keyword in local_keywords + local_keywords_with_file:
@@ -167,26 +176,26 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
                     for keyword in local_keywords + local_keywords_with_file:
                         if isinstance(keyword, dict) and keyword.get("regex") is not None:
                             regex_keyword = keyword["regex"]
-                            if time.time() - time_per_keyword[regex_keyword] >= int(keyword_notification_cooldown):
+                            if time.time() - time_per_keyword.get(regex_keyword) >= int(keyword_notification_cooldown):
                                 if re.search(regex_keyword, log_line_decoded, re.IGNORECASE):
                                     if keyword in local_keywords_with_file:
                                         logging.info(f"Regex-Keyword (with attachment) '{regex_keyword}' was found in {container.name}: {log_line_decoded}")
                                         file_name = log_attachment(container)
-                                        send_ntfy_notification(config, container.name, log_line_decoded, regex_keyword, file_name)
+                                        send_notification(config, container.name, log_line_decoded, regex_keyword, file_name)
                                     else:
-                                        send_ntfy_notification(config, container.name, log_line_decoded, keyword)
+                                        send_notification(config, container.name, log_line_decoded, regex_keyword)
                                         logging.info(f"Regex-Keyword '{keyword}' was found in {container.name}: {log_line_decoded}")
                                     time_per_keyword[regex_keyword] = time.time()
                                     logging.info(f"waiting {start_time - time.time()} for {regex_keyword}")
 
                         elif str(keyword).lower() in log_line_lower:
-                            if time.time() - time_per_keyword[keyword] >= int(keyword_notification_cooldown):
+                            if time.time() - time_per_keyword.get(keyword) >= int(keyword_notification_cooldown):
                                 if keyword in local_keywords_with_file:
                                     logging.info(f"Keyword (with attachment) '{keyword}' was found in {container.name}: {log_line_decoded}") 
                                     file_name = log_attachment(container)
-                                    send_ntfy_notification(config, container.name, log_line_decoded, keyword, file_name)
+                                    send_notification(config, container.name, log_line_decoded, keyword, file_name)
                                 else:
-                                    send_ntfy_notification(config, container.name, log_line_decoded, keyword)
+                                    send_notification(config, container.name, log_line_decoded, keyword)
                                     logging.info(f"Keyword '{keyword}' was found in {container.name}: {log_line_decoded}") 
                                 time_per_keyword[keyword] = time.time()
 
@@ -238,7 +247,7 @@ def monitor_docker_logs(config):
                     These containers from your config are not running {unmonitored_containers_str}")
 
     if bool(os.getenv("DISABLE_START_MESSAGE", config.get("settings", {}).get("disable_start_message", False))) == False:
-        send_ntfy_notification(config, "Loggifly", f"The programm is running and monitoring these selected Containers:\n - {containers_to_monitor_str} \n\nThese selected Containers are not running:\n - {unmonitored_containers_str}")
+        send_notification(config, "Loggifly", f"The programm is running and monitoring these selected Containers:\n - {containers_to_monitor_str} \n\nThese selected Containers are not running:\n - {unmonitored_containers_str}")
     
     for container in containers_to_monitor:
         thread = threading.Thread(target=monitor_container_logs, args=(config, client, container, global_keywords, global_keywords_with_file), daemon=True)
@@ -273,6 +282,5 @@ if __name__ == "__main__":
     config = load_config()
     set_logging(config)
     logging.debug(config)
-   # send_ntfy_notification(config, "Loggifly:", "The programm is running and monitoring the logs of your selected containers.")
     monitor_docker_logs(config)
-
+    

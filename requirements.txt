@@ -2,3 +2,4 @@ docker
 requests
 pyyaml
 watchdog
+apprise

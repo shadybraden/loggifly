@@ -2,27 +2,54 @@ import requests
 import logging
 import os
 import urllib.parse
+import apprise
+
 
 
 logging.getLogger(__name__)
+
+def send_apprise_notification(url, container_name, message, keyword=None, file_name=None):
+    apobj = apprise.Apprise()
+
+    apobj.add(url)
+
+    if keyword is None:
+        title = f"{container_name}"
+    else:
+        title = f"'{keyword}' found in {container_name}"
+    try: 
+        if file_name is None:
+            apobj.notify(
+                title=title,
+                body=message,
+            )
+        else:
+            apobj.notify(
+                title=title,
+                body=message,
+                attach=file_name
+            )
+        logging.info("Apprise-Notification sent successfully: %s", message)
+    except Exception as e:
+        logging.error("Error while trying to send apprise-notification: %s", e)
 
 
 def send_ntfy_notification(config, container_name, message, keyword=None, file_name=None):
     """
     Sendet eine Benachrichtigung an den ntfy-Server.
     """
-    ntfy_url = config["ntfy"]["url"]
-    ntfy_token = config["ntfy"]["token"]
+    ntfy_url = config["notifications"]["ntfy"]["url"]
+    ntfy_token = config["notifications"]["ntfy"]["token"]
 
     if isinstance(config.get("containers").get(container_name, {}), dict):
-        ntfy_topic = config.get("containers", {}).get(container_name, {}).get("ntfy_topic") or config.get("ntfy", {}).get("topic", "")
-        ntfy_tags = config.get("containers", {}).get(container_name, {}).get("ntfy_tags") or config.get("ntfy", {}).get("tags", "warning")
-        ntfy_priority = config.get("containers", {}).get(container_name, {}).get("ntfy_priority") or config.get("ntfy", {}).get("priority", "3")
+        ntfy_topic = config.get("containers", {}).get(container_name, {}).get("ntfy_topic") or config["notifications"].get("ntfy", {}).get("topic", "")
+        ntfy_tags = config.get("containers", {}).get(container_name, {}).get("ntfy_tags") or config["notifications"].get("ntfy", {}).get("tags", "warning")
+        ntfy_priority = config.get("containers", {}).get(container_name, {}).get("ntfy_priority") or config["notifications"].get("ntfy", {}).get("priority", "3")
 
     else:
-        ntfy_topic=  config.get("ntfy", {}).get("topic", "")
-        ntfy_tags = config.get("ntfy", {}).get("tags", "warning")
-        ntfy_priority = config.get("ntfy", {}).get("priority", "warning")
+        ntfy_topic=  config["notifications"].get("ntfy", {}).get("topic", "")
+        ntfy_tags = config["notifications"].get("ntfy", {}).get("tags", "warning")
+        ntfy_priority = config["notifications"].get("ntfy", {}).get("priority", "warning")
 
 
    
@@ -48,7 +75,6 @@ def send_ntfy_notification(config, container_name, message, keyword=None, file_n
     
     try:
         if file_name:
-            # Wenn eine Datei angegeben wurde, sende diese
             logging.debug("Message WITH file is being sent")
             headers["Filename"] = file_name
             with open(file_name, "rb") as file:
@@ -57,15 +83,8 @@ def send_ntfy_notification(config, container_name, message, keyword=None, file_n
                     data=file,
                     headers=headers
                 )
-            if os.path.exists(file_name):
-                os.remove(file_name)
-                logging.debug(f"Die Datei {file_name} wurde gelöscht.")
-            else:
-                logging.debug(f"Die Datei {file_name} existiert nicht.")
         else:
-            # Wenn keine Datei angegeben wurde, sende nur die Nachricht
             logging.debug("Message WITHOUT file is being sent")
-
             response = requests.post(
                 f"{ntfy_url}/{ntfy_topic}", 
                 data=message_text,
@@ -79,5 +98,24 @@ def send_ntfy_notification(config, container_name, message, keyword=None, file_n
         logging.error("Error while trying to connect to ntfy: %s", e)
 
 
-# if __name__ == "__main__":
-#     send_ntfy_notification()
+
+def send_notification(config, container_name, message, keyword=None, file_name=None):
+    ntfy_url = config["notifications"]["ntfy"]["url"]
+    ntfy_token = config["notifications"]["ntfy"]["token"]
+    if ntfy_url and ntfy_token:
+        send_ntfy_notification(config, container_name, message, keyword, file_name)
+
+    apprise_url = config["notifications"]["apprise"]["url"]
+    if apprise_url:
+        send_apprise_notification(apprise_url, container_name, message, keyword, file_name)
+
+    if file_name is not None:
+        if os.path.exists(file_name):
+            os.remove(file_name)
+            logging.debug(f"Die Datei {file_name} wurde gelöscht.")
+        else:
+            logging.debug(f"Die Datei {file_name} existiert nicht.")
+    
+    if not ntfy_url or not ntfy_token or not apprise_url:
+        logging.error("No notification service configured. You can not receive notifications at the moment.")
+    
