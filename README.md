@@ -18,20 +18,22 @@
 <br>
 
 
-**Loggifly** is a lightweight tool for monitoring Docker container logs and sending notifications when specific keywords are detected. It supports both plain text and regular expression (regex) keywords and can attach the last 50 lines of a log file when a match is found. 🚀
+**Loggifly** is a lightweight tool for monitoring Docker container logs and sending notifications when specific keywords are detected. It supports both plain text and regular expression (regex) keywords and can attach the last 50 lines of a log file when a match is found. I originally built this for ntfy and would recommend using that since it allows for the most fine grained configuration. But Loggifly also supports Apprise which lets you send notifications to over 100 different services. 🚀
 
 ---
 
 ## 🚀 Features
 
-- **🌟 100+ notification services**: With integrated Apprise support you can send notifications to Slack, Telegram, Discord and many more.
-- **📤 built in ntfy Integration**: Send alerts to any ntfy-compatible service (self-hosted or public).
-  - **🥳 Priority, Tags & Topic**: Customize notification priority, Tags/emojis and the topic individually for each container
+- **🌟 100+ notification services**: Via Apprise you can send notifications to Slack, Telegram, Discord and many more services.
+- **📤 Built in ntfy Support**: Send alerts to any ntfy-compatible service (self-hosted or public).
+  - **🥳 Priority, Tags & Topic**: Customize priority, tags/emojis and the topic individually for each container.
 - **🔍 Keyword & Regex Monitoring**: Track specific keywords or complex regex patterns in container logs.  
 - **🐳 Fine-Grained Keyword Control**: You can specify keywords per container or for all containers.  
 - **📁 Log Attachments**: Automatically attach a file with the last 50 log lines to notifications.  
 - **⏱ Rate Limiting**: Avoid spam with per-keyword/container cooldowns.  
 - **🔧 YAML Configuration**: Define containers, keywords, and notification settings in a simple config file.  
+- ** Automatic Restarts**: The programm restarts when it detects that the config file has been changed.
+
 
 ---
 
@@ -46,35 +48,35 @@ You can find a detailed walkthrough of the config file [here](https://https://gi
 ## 🛠 Installation Walkthrough
 
 
-1. Create a folder on your system, place your [config.yaml](config.yaml) there and edit it to fit your needs and preferences.
+1. Create a folder on your system, place your config.yaml there and edit it to fit your needs and preferences.
 ```yaml
 containers:
-    audiobookshelf:
-      ntfy_topic: books
-      ntfy_tags: books, headphones
-      ntfy_priority: 3
-      keywords:
-        - failed login
-        - requested download
-        - downloaded item 
- vaultwarden:
-      ntfy_tags: closed_lock_with_key
+    vaultwarden:
+      ntfy_tags: closed_lock_with_key   # if you use ntfy you can set these settings per container to overwite global settings
+      ntfy_priority: 5
+      ntfy_topic: security
       keywords:
         - Username or password is incorrect
         - regex: incorrect
         - username
         - password
-      keywords_with_attachment:
-        - regex: ^\[[^\]]+\]\[[^\]]+\]\[(ERROR)\] # catches all lines with Log level ERROR at the beginning (after the timestamp)
+      keywords_with_attachment:                   # send a file with the last log lines. You can set the number of lines. See 'settings' section.
+        - regex: ^\[[^\]]+\]\[[^\]]+\]\[(ERROR)\] # catches all lines with Log level set to ERROR at the beginning (after the timestamp)
 
+    audiobookshelf:           # if you don't need all the extra settings from ntfy or an attachment you can directly list your keywords here
+      - failed login
+      - requested download
+      - downloaded item 
+ 
 global_keywords:
-  - segfault
-  - panic
-  - fatal
+  keywords:
+    - segfault
+    - panic
+  keywords_with_attachment:
+    - fatal
 
-# Here you can specify your ntfy or apprise settings. Or both. 
-notifications:                          # You could also set these settings via environment variables if you want
-  ntfy:                                 
+notifications:                       # Here you can specify your ntfy or apprise settings. Or both. 
+  ntfy:                              # You could also set these settings via environment variables.                                 
     url: "your url"
     topic: "your topic"
     token: "token"
@@ -82,13 +84,13 @@ notifications:                          # You could also set these settings via 
   apprise:
     url: discord:// # Your apprise url. For example for Discord
   
-settings:
-  log-level: INFO
-  keyword_notification_cooldown: 5
-  attachment_lines: 10 
-  disable_shutdown_message: False
-  disable_start_message: False
-  disable_restart: False
+settings:                            # These are settings you could also set via environment variables
+  log-level: INFO                    # Set the log level (DEBUG, INFO, ERROR, FATAL)
+  keyword_notification_cooldown: 5   # Set the time the programm should wait before it sends you a notificatin from the same service and keyword
+  attachment_lines: 10               # Set the number of log lines in the log file attached to your notification 
+  disable_start_message: False       # Disable the message you get when the programm starts
+  disable_shutdown_message: False    # Disable the message you get when the programm shuts down
+  disable_restart: False             # Disable that the programm restarts when your config file changes
 ```
 
 ### Installation via Docker Compose
