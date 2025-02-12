@@ -18,7 +18,7 @@
 <br>
 
 
-**Loggifly** is a lightweight tool for monitoring Docker container logs and sending notifications when specific keywords are detected. It supports both plain text and regular expression (regex) keywords and can attach the last 50 lines of a log file when a match is found. I originally built this for ntfy and would recommend using that since it allows for the most fine grained configuration. But Loggifly also supports Apprise which lets you send notifications to over 100 different services. 🚀
+**Loggifly** is a lightweight tool for monitoring Docker container logs and sending notifications when specific keywords are detected. It supports both plain text and regular expression (regex) keywords and can attach the last 50 lines of a log file when a match is found. I originally built this to use with ntfy and ntfy is recommended because it allows the most fine grained configuration. But Loggifly also supports Apprise which lets you send notifications to over 100 different services. 🚀
 
 ---
 
@@ -40,7 +40,7 @@
 # Loggifly Configuration 
 
 While there are some settings you can set via environment variables most of the configuration for Loggifly happens in the config.yaml file.
-You can find a detailed walkthrough of the config file [here](https://https://github.com/clemcer/loggifly/blob/main/walkthrough.md).
+You can find a detailed walkthrough of the config file [here](https://github.com/clemcer/loggifly/blob/main/walkthrough.md).
 
 ---
 
@@ -48,7 +48,7 @@ You can find a detailed walkthrough of the config file [here](https://https://gi
 ## 🛠 Installation Walkthrough
 
 
-1. Create a folder on your system, place your config.yaml there and edit it to fit your needs and preferences.
+1. Create a folder on your system, place your config.yaml there and edit it to fit your needs and preferences. You can find a short example config with explaininf comments [here](https://github.com/clemcer/loggifly/blob/main/config.yaml). Or you take a look at the detailed config explanation [here](https://github.com/clemcer/loggifly/blob/main/walkthrough.md).
 ```yaml
 containers:
     vaultwarden:
@@ -56,14 +56,12 @@ containers:
       ntfy_priority: 5
       ntfy_topic: security
       keywords:
-        - Username or password is incorrect
-        - regex: incorrect
-        - username
-        - password
+        - regex: (username|password).*incorrect   # you can use regex expressions.
+        - login
       keywords_with_attachment:                   # send a file with the last log lines. You can set the number of lines. See 'settings' section.
         - regex: ^\[[^\]]+\]\[[^\]]+\]\[(ERROR)\] # catches all lines with Log level set to ERROR at the beginning (after the timestamp)
 
-    audiobookshelf:           # if you don't need all the extra settings from ntfy or an attachment you can directly list your keywords here
+    audiobookshelf:           # if you don't need all the extra settings from ntfy or an attachment you can directly list your keywords
       - failed login
       - requested download
       - downloaded item 
@@ -117,3 +115,5 @@ docker-compose up -d
 ```
 ---
 
+License
+[MIT](https://github.com/clemcer/loggifly/blob/main/LICENSE)
