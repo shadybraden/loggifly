@@ -24,35 +24,35 @@
 
 ## 🚀 Features
 
+- **🌟 100+ notification services**: With integrated Apprise support you can send notifications to Slack, Telegram, Discord and many more.
+- **📤 built in ntfy Integration**: Send alerts to any ntfy-compatible service (self-hosted or public).
+  - **🥳 Priority, Tags & Topic**: Customize notification priority, Tags/emojis and the topic individually for each container
 - **🔍 Keyword & Regex Monitoring**: Track specific keywords or complex regex patterns in container logs.  
 - **🐳 Fine-Grained Keyword Control**: You can specify keywords per container or for all containers.  
 - **📁 Log Attachments**: Automatically attach a file with the last 50 log lines to notifications.  
 - **⏱ Rate Limiting**: Avoid spam with per-keyword/container cooldowns.  
 - **🔧 YAML Configuration**: Define containers, keywords, and notification settings in a simple config file.  
-- **📤 ntfy Integration**: Send alerts to any ntfy-compatible service (self-hosted or public).
-  - **🥳 Priority, Tags & Topic**: Customize notification priority, Tags/emojis and the topic globally and/or per container
 
 ---
 
 # Loggifly Configuration 
 
 While there are some settings you can set via environment variables most of the configuration for Loggifly happens in the config.yaml file.
-You can find a detailed walkthrough of the config file [here](https://github.com/clemcer/Loggifly/CONFIG_EXPLANATION).
+You can find a detailed walkthrough of the config file [here](https://https://github.com/clemcer/loggifly/blob/main/walkthrough.md).
 
 ---
 
 
-## 🛠 Installation
+## 🛠 Installation Walkthrough
 
-### Installation via Docker Compose
 
 1. Create a folder on your system, place your [config.yaml](config.yaml) there and edit it to fit your needs and preferences.
 ```yaml
 containers:
     audiobookshelf:
-  #    ntfy_topic: abs
+      ntfy_topic: books
       ntfy_tags: books, headphones
-      ntfy_priotity: "5"
+      ntfy_priority: 3
       keywords:
         - failed login
         - requested download
@@ -72,14 +72,15 @@ global_keywords:
   - panic
   - fatal
 
-notifications:
-  ntfy:
-    url: "http://192.168.178.184:8080"
-    topic: "loggifly"
+# Here you can specify your ntfy or apprise settings. Or both. 
+notifications:                          # You could also set these settings via environment variables if you want
+  ntfy:                                 
+    url: "your url"
+    topic: "your topic"
     token: "token"
     tags: kite, mag
   apprise:
-    url: discord:// # apprise url. For example for Discord
+    url: discord:// # Your apprise url. For example for Discord
   
 settings:
   log-level: INFO
@@ -89,6 +90,8 @@ settings:
   disable_start_message: False
   disable_restart: False
 ```
+
+### Installation via Docker Compose
 
 2. Create a `docker-compose.yaml` file in your project and adjust it to your needs. In the volumes section you will have to specify the path to your config file.
 If you want, you can set all of the global settings (that are not defined per container) in your compose via environment variables. Here is a list of the options. (Or use an .env file)
