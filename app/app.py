@@ -65,10 +65,10 @@ def load_config():
 
     config["notifications"]["ntfy"] = {
         "url": os.getenv("NTFY_URL", config["notifications"].get("ntfy", {}).get("url", "")),
-        "topic": os.getenv("NTFY_TOPIC", config["notifications"].get("ntfy", {}).get("topic", "loggifly")),
+        "topic": os.getenv("NTFY_TOPIC", config["notifications"].get("ntfy", {}).get("topic", "")),
         "token": os.getenv("NTFY_TOKEN", config["notifications"].get("ntfy", {}).get("token", "")),
         "priority": os.getenv("NTFY_PRIORITY", config["notifications"].get("ntfy", {}).get("priority", "3")),
-        "tags": os.getenv("NTFY_TAGS", config["notifications"].get("ntfy", {}).get("tags", "warning")),
+        "tags": os.getenv("NTFY_TAGS", config["notifications"].get("ntfy", {}).get("tags", "kite, mag")),
     }
 
     config["notifications"]["apprise"] = {
@@ -241,22 +241,27 @@ def monitor_docker_logs(config):
     containers_to_monitor = [c for c in containers if c.name in selected_containers]
 
     containers_to_monitor_str = "\n - ".join(c.name for c in containers_to_monitor)   
-    unmonitored_containers_str = "\n - ".join(c for c in selected_containers if c not in [c.name for c in containers_to_monitor])
+    unmonitored_containers = [c for c in selected_containers if c not in [c.name for c in containers_to_monitor]]
+    if unmonitored_containers:
+        unmonitored_containers_str = "\n \n These selected Containers are not running:\n - " + "\n - ".join(unmonitored_containers)
+    else:
+        unmonitored_containers_str = ""
 
     logging.info(f"These containers are being monitored: {[c.name for c in containers_to_monitor]} \n \
                     These containers from your config are not running {unmonitored_containers_str}")
 
     if bool(os.getenv("DISABLE_START_MESSAGE", config.get("settings", {}).get("disable_start_message", False))) == False:
-        send_notification(config, "Loggifly", f"The programm is running and monitoring these selected Containers:\n - {containers_to_monitor_str} \n\nThese selected Containers are not running:\n - {unmonitored_containers_str}")
+        send_notification(config, "Loggifly", f"The programm is running and monitoring these selected Containers:\n - {containers_to_monitor_str}{unmonitored_containers_str}")
     
     for container in containers_to_monitor:
         thread = threading.Thread(target=monitor_container_logs, args=(config, client, container, global_keywords, global_keywords_with_file), daemon=True)
         threads.append(thread)
         thread.start()
 
-    thread_file_change = threading.Thread(target=detect_config_changes)
-    threads.append(thread_file_change)
-    thread_file_change.start()
+    if bool(os.getenv("DISABLE_RESTART", config.get("settings", {}).get("disable_restart", False))) == False:
+        thread_file_change = threading.Thread(target=detect_config_changes)
+        threads.append(thread_file_change)
+        thread_file_change.start()
 
     logging.info("Monitoring started for all selected containers. Monitoring docker events now to watch for new containers")
 
