@@ -97,7 +97,9 @@ class LogProcessor:
 
     
     def _refresh_pattern(self):
-        while not self.shutdown_event.wait(timeout=300):
+        counter = 0
+        while not self.shutdown_event.wait(timeout=300) and counter < 12 and self.patterns == []:
+            counter += 1
             logging.debug(f"Refreshing pattern")
             self._find_pattern()
             if self.patterns is not []:
@@ -105,6 +107,7 @@ class LogProcessor:
             else:
                 logging.info(f"container: {self.container_name}: Pattern refreshed. No pattern found. Mode: single-line.")
             logging.debug(f"container: {self.container_name}: Waiting 5 minutes to check again for patterns.")
+        logging.info(f"container: {self.container_name}: Stopping pattern-refreshing. No pattern found in log after 60 minutes. Mode: single-line.")
 
 
     def _find_pattern(self):

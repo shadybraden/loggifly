@@ -52,9 +52,6 @@ def send_ntfy_notification(config, container_name, message, keyword=None, file_n
         ntfy_tags = config["notifications"].get("ntfy", {}).get("tags", "warning")
         ntfy_priority = config["notifications"].get("ntfy", {}).get("priority", "warning")
 
-
-   
-
     if not ntfy_url or not ntfy_topic or not ntfy_token:
         logging.error("Ntfy-Konfiguration fehlt. Benachrichtigung nicht möglich.")
         return
@@ -125,7 +122,3 @@ def send_notification(config, container_name, message, keyword=None, file_name=N
             logging.debug(f"Die Datei {file_name} wurde gelöscht.")
         else:
             logging.debug(f"Die Datei {file_name} existiert nicht.")
-    
-    # if not ntfy_url or not ntfy_token or not apprise_url:
-    #     logging.error("No notification service configured. You can not receive notifications at the moment.")
-    

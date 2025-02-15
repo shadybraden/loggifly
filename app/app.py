@@ -31,16 +31,19 @@ def set_logging(config):
     logging.info("This is an Info-Message")
     logging.warning("This is a Warning-Message")
 
-def handle_signal(signum, frame):
+def handle_signal(config, signum, frame):
     if bool(os.getenv("DISABLE_SHUTDOWN_MESSAGE", config.get("settings", {}).get("disable_shutdown_message", False))) == False:
         send_notification(config, "Loggifly:", "The programm is shutting down.")
 
     logging.info(f"Signal {signum} received. shutting down...")
     shutdown_event.set() 
 
-signal.signal(signal.SIGTERM, handle_signal)
-signal.signal(signal.SIGINT, handle_signal)
+def signal_handler_wrapper(signum, frame):
+    handle_signal(config, signum, frame, )
 
+
+signal.signal(signal.SIGTERM, signal_handler_wrapper)
+signal.signal(signal.SIGINT, signal_handler_wrapper)
 
 
 
