@@ -4,13 +4,13 @@ import re
 import logging
 import docker
 import threading
-import time
 import traceback
 import signal
 from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from notifier import send_notification
+from line_processor import LogProcessor
 
 
 shutdown_event = threading.Event()
@@ -20,6 +20,7 @@ def set_logging(config):
     logging.getLogger().handlers.clear()
     logging.basicConfig(
         level = getattr(logging, log_level.upper(), logging.INFO),
+       # level = "DEBUG",
         format="%(asctime)s - %(levelname)s - %(message)s",
         handlers=[
             logging.FileHandler("monitor.log", mode="w"),
@@ -28,7 +29,7 @@ def set_logging(config):
     )
     logging.info(f"Log-Level set to {log_level}")
     logging.debug("This is a Debug-Message")
-    logging.info("This is a Info-Message")
+    logging.info("This is an Info-Message")
     logging.warning("This is a Warning-Message")
 
 def handle_signal(signum, frame):
@@ -50,13 +51,14 @@ def load_config():
     """
     config = {}
     try:
-        with open("config.yaml", "r") as file:
+        with open("/app/config.yaml", "r") as file:
             config = yaml.safe_load(file)
             logging.info("Konfigurationsdatei erfolgreich geladen.")
     except FileNotFoundError:
         logging.warning("config.yaml nicht gefunden. Verwende nur Umgebungsvariablen.")
-    config.setdefault("notifications", {})
 
+    config.setdefault("notifications", {})
+    config.setdefault("settings", {})
     allowed_keys = {"notifications", "settings", "containers", "global_keywords"}
     for key in list(config.keys()):  # Wichtiger Hinweis: Liste der Keys erstellen, um die Iteration zu sichern.
         if key not in allowed_keys:
@@ -75,13 +77,22 @@ def load_config():
         "url": os.getenv("APPRISE_URL", config["notifications"].get("apprise", {}).get("url", "")),
     }
     config["containers"] = config.get("containers", [])
+
+
+    config["settings"] = {
+        "multi_line_entries": os.getenv("MULTI_LINE_ENTRIES", config.get("settings", {}).get("multi_line_entries", True)),
+        "notification_cooldown": os.getenv("NOTIFICATION_COOLDOWN", config.get("settings", {}).get("notification_cooldown", 10))
+    }
+ 
+
     
     return config
 
 
 def restart_docker_container():
+    if bool(os.getenv("DISABLE_RESTART_MESSAGE", config.get("settings", {}).get("disable_restart_message", False))) == False:
+        send_notification(config, "Loggifly:", "Config Change detected. The programm is restarting.")
     logging.debug("restart_docker_container function was called")
-    time.sleep(5)
     client = docker.from_env()
     container_id = os.getenv("HOSTNAME")  # Docker setzt HOSTNAME auf die Container-ID
     container = client.containers.get(container_id)
@@ -114,51 +125,17 @@ def detect_config_changes():
         observer.join()
 
 
-def log_attachment(container):
-    if isinstance(config.get("containers").get(container.name, {}), dict):
-        lines = int(config.get("containers", {}).get(container.name, {}).get("attachment_lines") or os.getenv("ATTACHMENT_LINES", config.get("settings", {}).get("attachment_lines", 50)))
-    else:
-        lines = int(os.getenv("ATTACHMENT_LINES", config.get("settings", {}).get("attachment_lines", 50)))
-
-    file_name = f"last_{lines}_lines_from_{container.name}.log"
-
-    log_tail = container.logs(tail=lines).decode("utf-8")
-    with open(file_name, "w") as file:  
-        file.write(log_tail)
-        return file_name
 
 def monitor_container_logs(config, client, container, keywords, keywords_with_file):
     """
     Überwacht die Logs eines Containers und sendet Benachrichtigungen bei Schlüsselwörtern.
     """
     now = datetime.now()
-    start_time = 0
-    keyword_notification_cooldown = os.getenv("keyword_notification_cooldown", config.get("settings", {}).get("keyword_notification_cooldown", 10))
-    logging.debug(f"keyword_notification_cooldown: {keyword_notification_cooldown}")
     local_keywords = keywords.copy()
     local_keywords_with_file = keywords_with_file.copy()
-
-
-    if isinstance(config["containers"][container.name], list):
-        local_keywords.extend(config["containers"][container.name])
-    elif isinstance(config["containers"][container.name], dict):
-        if "keywords_with_attachment" in config["containers"][container.name]:
-            local_keywords_with_file.extend(config["containers"][container.name]["keywords_with_attachment"])
-        if "keywords" in config["containers"][container.name]:
-            local_keywords.extend(config["containers"][container.name]["keywords"])
-    else:
-        logging.error("Error in config: not a list or dict not  properly configured with keywords_with_attachment and keywords attributes")
-
-    logging.debug(f"{container.name} - Keywords: {local_keywords}, keywords with attachment: {local_keywords_with_file}")
-
-    time_per_keyword = { }
-    for keyword in local_keywords + local_keywords_with_file:
-        if isinstance(keyword, dict) and keyword.get("regex") is not None:
-            time_per_keyword[keyword["regex"]] = 0
-        else:
-            time_per_keyword[keyword] = 0
-    logging.debug(f"{container.name}: time_per_keyword: {time_per_keyword}")
-    logging.debug(f"starting log stream for {container.name}")
+  
+    processor = LogProcessor(config, container, local_keywords, local_keywords_with_file, shutdown_event, timeout=5)  
+    
     try:
         log_stream = container.logs(stream=True, follow=True, since=now)
         logging.info("Monitoring for Container started: %s", container.name)
@@ -170,35 +147,9 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
                 break
             try:
                 log_line_decoded = str(log_line.decode("utf-8")).strip()
-                #logging.debug("[%s] %s", container.name, log_line_decoded)
+                #logging.debug(f"Log-Line: {log_line_decoded}")
                 if log_line_decoded:
-                    log_line_lower = log_line_decoded.lower()
-                    for keyword in local_keywords + local_keywords_with_file:
-                        if isinstance(keyword, dict) and keyword.get("regex") is not None:
-                            regex_keyword = keyword["regex"]
-                            if time.time() - time_per_keyword.get(regex_keyword) >= int(keyword_notification_cooldown):
-                                if re.search(regex_keyword, log_line_decoded, re.IGNORECASE):
-                                    if keyword in local_keywords_with_file:
-                                        logging.info(f"Regex-Keyword (with attachment) '{regex_keyword}' was found in {container.name}: {log_line_decoded}")
-                                        file_name = log_attachment(container)
-                                        send_notification(config, container.name, log_line_decoded, regex_keyword, file_name)
-                                    else:
-                                        send_notification(config, container.name, log_line_decoded, regex_keyword)
-                                        logging.info(f"Regex-Keyword '{keyword}' was found in {container.name}: {log_line_decoded}")
-                                    time_per_keyword[regex_keyword] = time.time()
-                                    logging.info(f"waiting {start_time - time.time()} for {regex_keyword}")
-
-                        elif str(keyword).lower() in log_line_lower:
-                            if time.time() - time_per_keyword.get(keyword) >= int(keyword_notification_cooldown):
-                                if keyword in local_keywords_with_file:
-                                    logging.info(f"Keyword (with attachment) '{keyword}' was found in {container.name}: {log_line_decoded}") 
-                                    file_name = log_attachment(container)
-                                    send_notification(config, container.name, log_line_decoded, keyword, file_name)
-                                else:
-                                    send_notification(config, container.name, log_line_decoded, keyword)
-                                    logging.info(f"Keyword '{keyword}' was found in {container.name}: {log_line_decoded}") 
-                                time_per_keyword[keyword] = time.time()
-
+                    processor.process_line(log_line_decoded)
             except UnicodeDecodeError:
                 logging.warning("Fehler beim Dekodieren einer Log-Zeile von %s", container.name)
     except docker.errors.APIError as e:
@@ -258,6 +209,7 @@ def monitor_docker_logs(config):
         threads.append(thread)
         thread.start()
 
+
     if bool(os.getenv("DISABLE_RESTART", config.get("settings", {}).get("disable_restart", False))) == False:
         thread_file_change = threading.Thread(target=detect_config_changes)
         threads.append(thread_file_change)
@@ -277,15 +229,18 @@ def monitor_docker_logs(config):
             threads.append(thread)
             thread.start()
             logging.info("Monitoring new container: %s", container_from_event.name)
+            send_notification(config, "Loggifly", f"Monitoring new container: {container_from_event.name}")
 
 
-    for thread in threads:
-        thread.join()
+    # for thread in threads:
+    #     thread.join()
 
 if __name__ == "__main__":
     logging.info("Loggifly started")
     config = load_config()
     set_logging(config)
+    logging.info(f"Multi-Line-Mode: {config['settings']['multi_line_entries']}")
+    logging.info(f"Notification-Cooldown: {config['settings']['notification_cooldown']}")
     logging.debug(config)
     monitor_docker_logs(config)
     

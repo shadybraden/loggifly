@@ -12,6 +12,7 @@ def send_apprise_notification(url, container_name, message, keyword=None, file_n
     apobj = apprise.Apprise()
 
     apobj.add(url)
+    message = ("This message had to be shortened: \n" if len(message) > 1900 else "") + message[:1900]
 
     if keyword is None:
         title = f"{container_name}"
@@ -58,6 +59,8 @@ def send_ntfy_notification(config, container_name, message, keyword=None, file_n
         logging.error("Ntfy-Konfiguration fehlt. Benachrichtigung nicht möglich.")
         return
 
+    message = ("This message had to be shortened: \n" if len(message) > 3900 else "") + message[:3900]
+
     headers = {
         "Authorization": f"Bearer {ntfy_token}",
         "Tags": f"{ntfy_tags}",
@@ -78,11 +81,18 @@ def send_ntfy_notification(config, container_name, message, keyword=None, file_n
             logging.debug("Message WITH file is being sent")
             headers["Filename"] = file_name
             with open(file_name, "rb") as file:
-                response = requests.post(
-                    f"{ntfy_url}/{ntfy_topic}?message={urllib.parse.quote(message_text)}",
-                    data=file,
-                    headers=headers
-                )
+                if len(message_text) < 199:
+                    response = requests.post(
+                        f"{ntfy_url}/{ntfy_topic}?message={urllib.parse.quote(message_text)}",
+                        data=file,
+                        headers=headers
+                    )
+                else:
+                    response = requests.post(
+                        f"{ntfy_url}/{ntfy_topic}",
+                        data=file,
+                        headers=headers
+                    )
         else:
             logging.debug("Message WITHOUT file is being sent")
             response = requests.post(
@@ -116,6 +126,6 @@ def send_notification(config, container_name, message, keyword=None, file_name=N
         else:
             logging.debug(f"Die Datei {file_name} existiert nicht.")
     
-    if not ntfy_url or not ntfy_token or not apprise_url:
-        logging.error("No notification service configured. You can not receive notifications at the moment.")
+    # if not ntfy_url or not ntfy_token or not apprise_url:
+    #     logging.error("No notification service configured. You can not receive notifications at the moment.")
     
