@@ -99,15 +99,14 @@ def load_config():
 def restart_docker_container():
     if bool(os.getenv("DISABLE_RESTART_MESSAGE", config.get("settings", {}).get("disable_restart_message", False))) == False:
         send_notification(config, "Loggifly:", "Config Change detected. The programm is restarting.")
-    logging.debug("restart_docker_container function was called")
+    logging.info("The programm is restarting.")
     client = docker.from_env()
-    container_id = os.getenv("HOSTNAME")  # Docker setzt HOSTNAME auf die Container-ID
+    container_id = os.getenv("HOSTNAME")  
     container = client.containers.get(container_id)
     logging.debug(f"container_id: {container_id}, container: {container}")
     container.restart()
 
-
-class ConfigHandler(FileSystemEventHandler):
+class ConfigHandler(FileSystemEventHandler): # Watch for changes in config.yaml. Watchdog.
     def on_modified(self, event):
         if not event.is_directory and event.src_path.endswith('config.yaml'):
             logging.debug("File has changed!")
@@ -117,7 +116,7 @@ class ConfigHandler(FileSystemEventHandler):
 
 def detect_config_changes():
     logging.debug("watching for config changes")
-    path = "/app/config.yaml"  # Pfad zur config.yaml
+    path = "/app/config.yaml"  
     event_handler = ConfigHandler()
     observer = Observer()
     observer.schedule(event_handler, path=path, recursive=False)    
@@ -130,7 +129,6 @@ def detect_config_changes():
     finally:
         observer.stop()
         observer.join()
-
 
 
 def monitor_container_logs(config, client, container):
@@ -152,19 +150,19 @@ def monitor_container_logs(config, client, container):
                 if log_line_decoded:
                     processor.process_line(log_line_decoded)
             except UnicodeDecodeError:
-                logging.warning("Fehler beim Dekodieren einer Log-Zeile von %s", container.name)
+                logging.warning("Error while trying to decode a log line %s", container.name)
     except docker.errors.APIError as e:
-        logging.error("Docker API-Fehler für Container %s: %s", container.name, e)
+        logging.error("Docker API-Errorer for Container %s: %s", container.name, e)
     except Exception as e:
-        logging.error("Fehler bei der Überwachung von %s: %s", container.name, e)
+        logging.error("Error while trying to monitor %s: %s", container.name, e)
         # Füge hier zusätzliches Logging hinzu
-        logging.error("Fehlerdetails: %s", str(e.__class__.__name__))
+        logging.error("Error details: %s", str(e.__class__.__name__))
         logging.debug(traceback.format_exc())
 
 
     logging.info("Monitoring stopped for Container: %s", container.name)
 
-def monitor_docker_logs(config):
+def main(config):
     """
     Create Threads for each container to monitor their logs 
     as well as monitoring docker events for new containers. 
@@ -179,16 +177,16 @@ def monitor_docker_logs(config):
     containers = client.containers.list()
 
     containers_to_monitor = [c for c in containers if c.name in selected_containers]
-
-    containers_to_monitor_str = "\n - ".join(c.name for c in containers_to_monitor)   
+    containers_to_monitor_str = "\n - ".join(c.name for c in containers_to_monitor)
+    
+    logging.info(f"These containers are being monitored: {[c.name for c in containers_to_monitor]}")
+   
     unmonitored_containers = [c for c in selected_containers if c not in [c.name for c in containers_to_monitor]]
     if unmonitored_containers:
         unmonitored_containers_str = "\n \n These selected Containers are not running:\n - " + "\n - ".join(unmonitored_containers)
+        logging.info(f"These containers from your config are not running {unmonitored_containers_str}")
     else:
         unmonitored_containers_str = ""
-
-    logging.info(f"These containers are being monitored: {[c.name for c in containers_to_monitor]} \n \
-                    These containers from your config are not running {unmonitored_containers_str}")
 
     if bool(os.getenv("DISABLE_START_MESSAGE", config.get("settings", {}).get("disable_start_message", False))) == False:
         send_notification(config, "Loggifly", f"The programm is running and monitoring these selected Containers:\n - {containers_to_monitor_str}{unmonitored_containers_str}")
@@ -231,5 +229,5 @@ if __name__ == "__main__":
     logging.info(f"Multi-Line-Mode: {config['settings']['multi_line_entries']}")
     logging.info(f"Notification-Cooldown: {config['settings']['notification_cooldown']}")
     logging.debug(config)
-    monitor_docker_logs(config)
+    main(config)
     

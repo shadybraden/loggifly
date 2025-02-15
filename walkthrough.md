@@ -110,6 +110,9 @@ These are the global settings you can set via docker environment variables in ei
 | **DISBLE_SHUTDOWN_MESSAGE**       | Disable shutdown message.                                 | False     |
 | **DISABLE_RESTART_MESSAGE**       | Disable message on config change when programm restarts.| False     |
 | **MULTI_LINE_ENTRIES**            | When enabled the programm tries to catch entries that span multiple log lines.<br>If you encounter bugs or you simply don't need it you can disable it.| False     |
+| **GLOBAL_KEYWORDS**       | Global Keywords.| _N/A_  |
+| **GLOBAL_KEYWORDS_WITH_ATTACHMENT**       | When these global keywords are detected<br>the last lines from the log are attached in a .log file.| _N/A_ |
+
 
 
 

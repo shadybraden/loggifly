@@ -150,8 +150,7 @@ class LogProcessor:
         self.waiting_for_pattern = False
 
     def _check_flush(self):
-        while self.running:
-            time.sleep(1)  # Häufigere Checks für präziseres Timeout
+        while not self.shutdown_event.wait(timeout=1):
             with self.lock_buffer:
                 if (time.time() - self.log_stream_last_updated > self.log_stream_timeout) and self.buffer:
                     self._handle_and_clear_buffer()
@@ -204,10 +203,9 @@ class LogProcessor:
                     if re.search(regex_keyword, log_line, re.IGNORECASE):
                         if keyword in self.container_keywords_with_file:
                             logging.info(f"Regex-Keyword (with attachment) '{regex_keyword}' was found in {self.container_name}: {log_line}")
-                            file_name = self._log_attachment()
-                            self._send_message(log_line, regex_keyword, file_name)
+                            self._send_message(log_line, regex_keyword, send_attachment=True)
                         else:
-                            self._send_message(log_line, regex_keyword)
+                            self._send_message(log_line, regex_keyword, send_attachment=False)
                             logging.info(f"Regex-Keyword '{keyword}' was found in {self.container_name}: {log_line}")
                         self.time_per_keyword[regex_keyword] = time.time()
 
@@ -216,10 +214,9 @@ class LogProcessor:
                 if time.time() - self.time_per_keyword.get(keyword) >= int(self.notification_cooldown):
                     if keyword in self.container_keywords_with_file:
                         logging.info(f"Keyword (with attachment) '{keyword}' was found in {self.container_name}: {log_line}") 
-                        file_name = self._log_attachment()
-                        self._send_message(log_line, keyword, file_name)
+                        self._send_message(log_line, keyword, send_attachment=True)
                     else:
-                        self._send_message(log_line, keyword)
+                        self._send_message(log_line, keyword, send_attachment=False)
                         logging.info(f"Keyword '{keyword}' was found in {self.container_name}: {log_line}") 
                     self.time_per_keyword[keyword] = time.time()
 
@@ -236,15 +233,15 @@ class LogProcessor:
             file.write(log_tail)
             return file_name
 
-    def _send_message(self, message, keyword, file_name=None):
+    def _send_message(self, message, keyword, send_attachment=False):
        # logging.debug(f"SENDE NACHRICHT: \n{message}\nNACHRICHT ENDE")
-        send_notification(self.config, self.container_name, message, keyword, file_name)       
+        if send_attachment:
+           file_name = self._log_attachment()
+           send_notification(self.config, self.container_name, message, keyword, file_name)      
+        else:
+            send_notification(self.config, self.container_name, message, keyword)
 
 
 
-    def stop(self):
-        self.running = False
-        with self.lock_buffer:
-            if self.buffer:
-                self._handle_and_clear_buffer()
+
 
