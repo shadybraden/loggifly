@@ -1,6 +1,5 @@
 import os
 import yaml
-import re
 import logging
 import docker
 import threading
@@ -47,7 +46,7 @@ signal.signal(signal.SIGINT, handle_signal)
 
 def load_config():
     """
-    Lädt die Konfiguration aus config.yaml und ergänzt sie mit Umgebungsvariablen.
+    Load config from config.yaml or override with environment variables
     """
     config = {}
     try:
@@ -59,11 +58,11 @@ def load_config():
 
     config.setdefault("notifications", {})
     config.setdefault("settings", {})
+    
     allowed_keys = {"notifications", "settings", "containers", "global_keywords"}
-    for key in list(config.keys()):  # Wichtiger Hinweis: Liste der Keys erstellen, um die Iteration zu sichern.
+    for key in list(config.keys()):
         if key not in allowed_keys:
             del config[key]
-
 
     config["notifications"]["ntfy"] = {
         "url": os.getenv("NTFY_URL", config["notifications"].get("ntfy", {}).get("url", "")),
@@ -78,14 +77,22 @@ def load_config():
     }
     config["containers"] = config.get("containers", [])
 
-
     config["settings"] = {
         "multi_line_entries": os.getenv("MULTI_LINE_ENTRIES", config.get("settings", {}).get("multi_line_entries", True)),
         "notification_cooldown": os.getenv("NOTIFICATION_COOLDOWN", config.get("settings", {}).get("notification_cooldown", 10))
     }
- 
 
-    
+    if isinstance(config.get("global_keywords"), list):
+        config["global_keywords"] = {
+            "keywords": os.getenv("GLOBAL_KEYWORDS", config.get("global_keywords", "")),
+            "keywords_with_attachment": os.getenv("GLOBAL_KEYWORDS_WITH_ATTACHMENT", "")
+        }
+    elif isinstance(config.get("global_keywords"), dict):
+        config["global_keywords"] = {
+            "keywords": os.getenv("GLOBAL_KEYWORDS", "") + config.get("global_keywords", {}).get("keywords", ""),
+            "keywords_with_attachment": os.getenv("GLOBAL_KEYWORDS_WITH_ATTACHMENT", "") + config.get("global_keywords", {}).get("keywords_with_attachment", "")
+        }
+
     return config
 
 
@@ -126,15 +133,10 @@ def detect_config_changes():
 
 
 
-def monitor_container_logs(config, client, container, keywords, keywords_with_file):
-    """
-    Überwacht die Logs eines Containers und sendet Benachrichtigungen bei Schlüsselwörtern.
-    """
+def monitor_container_logs(config, client, container):
+
     now = datetime.now()
-    local_keywords = keywords.copy()
-    local_keywords_with_file = keywords_with_file.copy()
-  
-    processor = LogProcessor(config, container, local_keywords, local_keywords_with_file, shutdown_event, timeout=5)  
+    processor = LogProcessor(config, container, shutdown_event, timeout=5)  
     
     try:
         log_stream = container.logs(stream=True, follow=True, since=now)
@@ -147,7 +149,6 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
                 break
             try:
                 log_line_decoded = str(log_line.decode("utf-8")).strip()
-                #logging.debug(f"Log-Line: {log_line_decoded}")
                 if log_line_decoded:
                     processor.process_line(log_line_decoded)
             except UnicodeDecodeError:
@@ -165,23 +166,11 @@ def monitor_container_logs(config, client, container, keywords, keywords_with_fi
 
 def monitor_docker_logs(config):
     """
-    Erstellt Threads zur Überwachung der Container-Logs.
+    Create Threads for each container to monitor their logs 
+    as well as monitoring docker events for new containers. 
+    And a thread fot watching config changes.
     """
     threads = []
-
-    global_keywords = [ ]
-    global_keywords_with_file = [ ]
-    if isinstance(config.get("global_keywords"), list):
-        global_keywords = config["global_keywords"] 
-    elif isinstance(config.get("global_keywords"), dict):
-        if "keywords_with_attachment" in config["global_keywords"]:
-            global_keywords_with_file = (config["global_keywords"]["keywords_with_attachment"])
-        if "keywords" in config["global_keywords"]:
-            global_keywords = (config["global_keywords"]["keywords"])
-        if not "keywords_with_attachment" or "keywords" in config["global_keywords"]:
-            logging.error("Error in config: global_keywords: 'attachment' or 'keywords' not properly configured")
-
-
 
     client = docker.from_env()
     selected_containers = [ ]
@@ -205,7 +194,7 @@ def monitor_docker_logs(config):
         send_notification(config, "Loggifly", f"The programm is running and monitoring these selected Containers:\n - {containers_to_monitor_str}{unmonitored_containers_str}")
     
     for container in containers_to_monitor:
-        thread = threading.Thread(target=monitor_container_logs, args=(config, client, container, global_keywords, global_keywords_with_file), daemon=True)
+        thread = threading.Thread(target=monitor_container_logs, args=(config, client, container), daemon=True)
         threads.append(thread)
         thread.start()
 
@@ -225,7 +214,7 @@ def monitor_docker_logs(config):
         id = event["Actor"]["ID"]
         container_from_event = client.containers.get(id)
         if container_from_event.name in selected_containers:
-            thread = threading.Thread(target=monitor_container_logs, args=(config, client, container_from_event, global_keywords, global_keywords_with_file), daemon=True)
+            thread = threading.Thread(target=monitor_container_logs, args=(config, client, container_from_event), daemon=True)
             threads.append(thread)
             thread.start()
             logging.info("Monitoring new container: %s", container_from_event.name)

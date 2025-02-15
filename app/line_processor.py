@@ -11,17 +11,17 @@ from notifier import send_notification
 logging.getLogger(__name__)
 
 class LogProcessor:
-    def __init__(self, config, container, keywords, keywords_with_file, shutdown_event, timeout=1):
+    def __init__(self, config, container, shutdown_event, timeout=1):
         self.shutdown_event = shutdown_event
         self.config = config
+        self.container_keywords = list(config.get("global_keywords", {}).get("key words", []))
+        self.container_keywords_with_file = list(config.get("global_keywords", {}).get("keywords_with_attachment", []))
         self.container_name = container.name
         self.container = container
         self.multi_line_config = config['settings']['multi_line_entries']
 
         self.notification_cooldown = config['settings']['notification_cooldown']
         self.time_per_keyword = {}     
-        self.local_keywords = keywords.copy()
-        self.local_keywords_with_file = keywords_with_file.copy()
         self._initialise_keywords()
 
         if self.multi_line_config is True:
@@ -78,16 +78,18 @@ class LogProcessor:
 
     
     def _initialise_keywords(self):
-        if isinstance(self.config["containers"][self.container_name], list):
-            self.local_keywords.extend(self.config["containers"][self.container_name])
-        elif isinstance(self.config["containers"][self.container_name], dict):
-            if "keywords_with_attachment" in self.config["containers"][self.container_name]:
-                self.local_keywords_with_file.extend(self.config["containers"][self.container_name]["keywords_with_attachment"])
-            if "keywords" in self.config["containers"][self.container_name]:
-                self.local_keywords.extend(self.config["containers"][self.container_name]["keywords"])
-        logging.info(f"container: {self.container_name}: Keywords: {self.local_keywords}, Keywords with attachment: {self.local_keywords_with_file}")
+        container_config = self.config["containers"].get(self.container_name, {})
+        if isinstance(container_config, list):
+            self.container_keywords.extend(container_config)
+        elif isinstance(container_config, dict):
+            self.container_keywords.extend(container_config.get("keywords", []))
+            self.container_keywords_with_file.extend(container_config.get("keywords_with_attachment", []))
+
+        logging.info(f"container: {self.container_name}: Keywords: {self.container_keywords}, Keywords with attachment: {self.container_keywords_with_file}")
         
-        for keyword in self.local_keywords + self.local_keywords_with_file:
+        
+
+        for keyword in self.container_keywords + self.container_keywords_with_file:
             if isinstance(keyword, dict) and keyword.get("regex") is not None:
                 self.time_per_keyword[keyword["regex"]] = 0
             else:
@@ -106,11 +108,7 @@ class LogProcessor:
 
 
     def _find_pattern(self):
-        # if not self.multi_line:
-        #     return
         self.waiting_for_pattern = True
-        logging.debug(f"container: {self.container_name}While Loop running")
-    
         tmp_patterns = {pattern: 0 for pattern in self.compiled_time_stamp_patterns}
 
         log_tail = self.container.logs(tail=100).decode("utf-8")
@@ -118,7 +116,6 @@ class LogProcessor:
             for pattern in self.compiled_time_stamp_patterns:
                 if pattern.search(line):
                     tmp_patterns[pattern] += 1
-                    #logging.debug(f"container: {self.container_name}: Found pattern: {pattern} --- In line: {line}")
                     break
         sorted_patterns = sorted(tmp_patterns.items(), key=lambda x: x[1], reverse=True)
         
@@ -137,15 +134,12 @@ class LogProcessor:
                 for pattern in self.compiled_log_level_patterns:
                     if pattern.search(line):
                         tmp_patterns[pattern] += 1
-                        #logging.debug(f"container: {self.container_name}: Found pattern: {pattern} --- In line: {line}")
                         break
 
         sorted_patterns = sorted(tmp_patterns.items(), key=lambda x: x[1], reverse=True)
         for pattern in sorted_patterns:
             if pattern[1] > threshold:
                 self.patterns.append(pattern[0])
-
-        #logging.debug(f"container: {self.container_name}: Found patterns: {self.patterns}")
 
         if self.patterns == []:
             self.valid_pattern = False
@@ -202,13 +196,13 @@ class LogProcessor:
 
     def _search_and_send(self, log_line):
       #  logging.debug(f"Searching for keywords in: {log_line}, {self.local_keywords}, {self.local_keywords_with_file}")
-        for keyword in self.local_keywords + self.local_keywords_with_file:
+        for keyword in self.container_keywords + self.container_keywords_with_file:
             if isinstance(keyword, dict) and keyword.get("regex") is not None:
                 regex_keyword = keyword["regex"]
                 #logging.debug(f"Searching for regex-keyword: {regex_keyword}")
                 if time.time() - self.time_per_keyword.get(regex_keyword) >= int(self.notification_cooldown):
                     if re.search(regex_keyword, log_line, re.IGNORECASE):
-                        if keyword in self.local_keywords_with_file:
+                        if keyword in self.container_keywords_with_file:
                             logging.info(f"Regex-Keyword (with attachment) '{regex_keyword}' was found in {self.container_name}: {log_line}")
                             file_name = self._log_attachment()
                             self._send_message(log_line, regex_keyword, file_name)
@@ -220,7 +214,7 @@ class LogProcessor:
             elif str(keyword).lower() in log_line.lower():
                # logging.debug(f"Searching for keyword: {keyword}")
                 if time.time() - self.time_per_keyword.get(keyword) >= int(self.notification_cooldown):
-                    if keyword in self.local_keywords_with_file:
+                    if keyword in self.container_keywords_with_file:
                         logging.info(f"Keyword (with attachment) '{keyword}' was found in {self.container_name}: {log_line}") 
                         file_name = self._log_attachment()
                         self._send_message(log_line, keyword, file_name)
