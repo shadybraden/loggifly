@@ -43,7 +43,8 @@ class LogProcessor:
             # ----------------------------------------------------------------
             # Log-Level (Fallback)
             # ----------------------------------------------------------------
-            r"(?i)(?<=\s)\b(?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\b(?=\s|:|$)", 
+            r"(?i)(?<=^)\b(?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\b(?=\s|:|$)",      
+            r"(?i)(?<=\s)\b(?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\b(?=\s|:|$)",
             r"(?i)\[(?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\]",
             r"(?i)\((?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\)",
 
@@ -152,7 +153,7 @@ class LogProcessor:
                 logging.info(f"container: {self.container_name}: Found pattern(s) in log. Stopping the search now after {self.line_limit}] lines. Mode: multi-line.\nPatterns: {self.patterns}")
                     #     logging.info(f"container: {self.container_name}: No pattern found in log. Mode: single-line.")
 
-        logging.debug(f"container: {self.container_name}: Line_count: {self.line_count} Patterns: {sorted_patterns}")
+        #logging.debug(f"container: {self.container_name}: Line_count: {self.line_count} Patterns: {sorted_patterns}")
         #     self.valid_pattern = True
         #     logging.info(f"container: {self.container_name}: Found pattern(s) in log. Mode: multi-line.\nPatterns: {self.patterns}")
         self.waiting_for_pattern = False
