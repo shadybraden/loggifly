@@ -17,9 +17,10 @@ class LogProcessor:
             
         # combined timestamp and log level
         r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:,\d{3})?\] \[(?:INFO|ERROR|DEBUG|WARN|WARNING|CRITICAL)\]",
+        r"^\d{4}-\d{2}-\d{2}(?:, | )\d{2}:\d{2}:\d{2}(?:,\d{3})? (?:INFO|ERROR|DEBUG|WARN|WARNING|CRITICAL)",
         
-        # ISO in brackets (JSON/structured Logs)
-        r"^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})\]",
+        # ISO in brackets
+        r"^\[\d{4}-\d{2}-\d{2}(?:T|, | )\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2}| [+-]\d{4})\]", # [2025-02-17T03:23:07Z] or [2025-02-17 04:22:59 +0100]
 
         # months in brackets
         r"^\[(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}, \d{4} \d{2}:\d{2}:\d{2}\]",
@@ -31,23 +32,28 @@ class LogProcessor:
         r"^\[(?:INFO|ERROR|DEBUG|WARN|WARNING|CRITICAL)\]",
         r"^\((?:INFO|ERROR|DEBUG|WARN|WARNING|CRITICAL)\)"
     ]
+                ###     ^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})\]
 
     FLEX_PATTERNS = [
             # ----------------------------------------------------------------
             # Generic Timestamps (Fallback)
             # ----------------------------------------------------------------
             r"\b\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\b",
-            r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})?\b",
+            r"\b\d{4}-\d{2}-\d{2}(?:T|, | )\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2}| [+-]\d{4})\b", # 2025-02-17T03:23:07Z
             r"\b(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])-\d{4} \d{2}:\d{2}:\d{2}\b",
             r"(?i)\b\d{2}/\d{2}/\d{4},? \d{1,2}:\d{2}:\d{2} ?(?:AM|PM)?\b",
+            r"\b\d{10}\.\d+\b",                                                          # 1739762586.0394847
+           
+
             # ----------------------------------------------------------------
             # Log-Level (Fallback)
             # ----------------------------------------------------------------
-            r"(?i)(?<=\s)\b(?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\b(?=\s|:|$)", 
+            r"(?i)(?<=^)\b(?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\b(?=\s|:|$)",      
+            r"(?i)(?<=\s)\b(?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\b(?=\s|:|$)",
             r"(?i)\[(?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\]",
             r"(?i)\((?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\)",
-
         ]
+            
     COMPILED_STRICT_PATTERNS = [re.compile(pattern) for pattern in STRICT_PATTERNS]
     COMPILED_FLEX_PATTERNS = [re.compile(pattern) for pattern in FLEX_PATTERNS]
 
@@ -152,7 +158,7 @@ class LogProcessor:
                 logging.info(f"container: {self.container_name}: Found pattern(s) in log. Stopping the search now after {self.line_limit}] lines. Mode: multi-line.\nPatterns: {self.patterns}")
                     #     logging.info(f"container: {self.container_name}: No pattern found in log. Mode: single-line.")
 
-        logging.debug(f"container: {self.container_name}: Line_count: {self.line_count} Patterns: {sorted_patterns}")
+        #logging.debug(f"container: {self.container_name}: Line_count: {self.line_count} Patterns: {sorted_patterns}")
         #     self.valid_pattern = True
         #     logging.info(f"container: {self.container_name}: Found pattern(s) in log. Mode: multi-line.\nPatterns: {self.patterns}")
         self.waiting_for_pattern = False
@@ -168,7 +174,7 @@ class LogProcessor:
         if self.multi_line_config == False:
             self._search_and_send(line)
         else:
-            if self.line_count < self.line_limit:
+            if self.line_count <= self.line_limit:
                 self._find_pattern(line)
             if self.valid_pattern == True:
                 self._process_multi_line(line)
@@ -247,8 +253,13 @@ class LogProcessor:
     def _send_message(self, message, keyword, send_attachment=False):
        # logging.debug(f"SENDE NACHRICHT: \n{message}\nNACHRICHT ENDE")
         if send_attachment:
-           file_name = self._log_attachment()
-           send_notification(self.config, self.container_name, message, keyword, file_name)      
+            file_name = self._log_attachment()
+            send_notification(self.config, self.container_name, message, keyword, file_name)     
+            if os.path.exists(file_name):
+                os.remove(file_name)
+                logging.debug(f"Die Datei {file_name} wurde gelöscht.")
+            else:
+                logging.debug(f"Die Datei {file_name} existiert nicht.") 
         else:
             send_notification(self.config, self.container_name, message, keyword)
 

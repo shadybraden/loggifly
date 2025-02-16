@@ -116,9 +116,4 @@ def send_notification(config, container_name, message, keyword=None, file_name=N
     if apprise_url:
         send_apprise_notification(apprise_url, container_name, message, keyword, file_name)
 
-    if file_name is not None:
-        if os.path.exists(file_name):
-            os.remove(file_name)
-            logging.debug(f"Die Datei {file_name} wurde gelöscht.")
-        else:
-            logging.debug(f"Die Datei {file_name} existiert nicht.")
+   

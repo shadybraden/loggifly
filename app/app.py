@@ -13,6 +13,7 @@ from line_processor import LogProcessor
 
 
 shutdown_event = threading.Event()
+config = {}
 
 def set_logging(config):
     log_level = os.getenv("LOG_LEVEL", config.get("settings", {}).get("log-level", "INFO")).upper()
@@ -31,19 +32,15 @@ def set_logging(config):
     logging.info("This is an Info-Message")
     logging.warning("This is a Warning-Message")
 
-def handle_signal(config, signum, frame):
+def handle_signal(signum, frame):
     if bool(os.getenv("DISABLE_SHUTDOWN_MESSAGE", config.get("settings", {}).get("disable_shutdown_message", False))) == False:
         send_notification(config, "Loggifly:", "The programm is shutting down.")
 
     logging.info(f"Signal {signum} received. shutting down...")
     shutdown_event.set() 
 
-def signal_handler_wrapper(signum, frame):
-    handle_signal(config, signum, frame, )
-
-
-signal.signal(signal.SIGTERM, signal_handler_wrapper)
-signal.signal(signal.SIGINT, signal_handler_wrapper)
+signal.signal(signal.SIGTERM, handle_signal)
+signal.signal(signal.SIGINT, handle_signal)
 
 
 
@@ -51,7 +48,8 @@ def load_config():
     """
     Load config from config.yaml or override with environment variables
     """
-    config = {}
+    global config 
+    
     try:
         with open("/app/config.yaml", "r") as file:
             config = yaml.safe_load(file)
@@ -61,6 +59,10 @@ def load_config():
 
     config.setdefault("notifications", {})
     config.setdefault("settings", {})
+
+    if isinstance(config["containers"], list):
+        config["containers"] = {name: {} for name in config["containers"]}
+
     
     allowed_keys = {"notifications", "settings", "containers", "global_keywords"}
     for key in list(config.keys()):
@@ -87,13 +89,13 @@ def load_config():
 
     if isinstance(config.get("global_keywords"), list):
         config["global_keywords"] = {
-            "keywords": os.getenv("GLOBAL_KEYWORDS", config.get("global_keywords", "")),
-            "keywords_with_attachment": os.getenv("GLOBAL_KEYWORDS_WITH_ATTACHMENT", "")
+            "keywords": config.get("global_keywords", ""),
+            "keywords_with_attachment": []
         }
     elif isinstance(config.get("global_keywords"), dict):
         config["global_keywords"] = {
-            "keywords": os.getenv("GLOBAL_KEYWORDS", "") + config.get("global_keywords", {}).get("keywords", ""),
-            "keywords_with_attachment": os.getenv("GLOBAL_KEYWORDS_WITH_ATTACHMENT", "") + config.get("global_keywords", {}).get("keywords_with_attachment", "")
+            "keywords": config.get("global_keywords", {}).get("keywords", ""),
+            "keywords_with_attachment": config.get("global_keywords", {}).get("keywords_with_attachment", "")
         }
 
     return config
