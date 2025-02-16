@@ -10,11 +10,51 @@ from notifier import send_notification
 
 logging.getLogger(__name__)
 
+
 class LogProcessor:
+
+    STRICT_PATTERNS = [
+            
+        # combined timestamp and log level
+        r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:,\d{3})?\] \[(?:INFO|ERROR|DEBUG|WARN|WARNING|CRITICAL)\]",
+        
+        # ISO in brackets (JSON/structured Logs)
+        r"^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})\]",
+
+        # months in brackets
+        r"^\[(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}, \d{4} \d{2}:\d{2}:\d{2}\]",
+        
+        # Unix-like Timestamps
+        r"^\[\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{2,6}\]",
+        
+        # Log-Level at the beginning of the line
+        r"^\[(?:INFO|ERROR|DEBUG|WARN|WARNING|CRITICAL)\]",
+        r"^\((?:INFO|ERROR|DEBUG|WARN|WARNING|CRITICAL)\)"
+    ]
+
+    FLEX_PATTERNS = [
+            # ----------------------------------------------------------------
+            # Generic Timestamps (Fallback)
+            # ----------------------------------------------------------------
+            r"\b\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\b",
+            r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})?\b",
+            r"\b(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])-\d{4} \d{2}:\d{2}:\d{2}\b",
+            r"(?i)\b\d{2}/\d{2}/\d{4},? \d{1,2}:\d{2}:\d{2} ?(?:AM|PM)?\b",
+            # ----------------------------------------------------------------
+            # Log-Level (Fallback)
+            # ----------------------------------------------------------------
+            r"(?i)(?<=\s)\b(?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\b(?=\s|:|$)", 
+            r"(?i)\[(?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\]",
+            r"(?i)\((?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\)",
+
+        ]
+    COMPILED_STRICT_PATTERNS = [re.compile(pattern) for pattern in STRICT_PATTERNS]
+    COMPILED_FLEX_PATTERNS = [re.compile(pattern) for pattern in FLEX_PATTERNS]
+
     def __init__(self, config, container, shutdown_event, timeout=1):
         self.shutdown_event = shutdown_event
         self.config = config
-        self.container_keywords = list(config.get("global_keywords", {}).get("key words", []))
+        self.container_keywords = list(config.get("global_keywords", {}).get("keywords", []))
         self.container_keywords_with_file = list(config.get("global_keywords", {}).get("keywords_with_attachment", []))
         self.container_name = container.name
         self.container = container
@@ -26,46 +66,16 @@ class LogProcessor:
 
         if self.multi_line_config is True:
             self.lock_buffer = Lock()
-
-            self.time_stamp_patterns = [
-                # Matches ISO 8601 with optional timezone and milliseconds
-                # Examples: "2025-02-13 16:36:02", "2025-02-13T16:36:02Z", "2025-02-13T16:36:02.123Z", "2025-02-13T16:36:02+01:00"
-                r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[Z+-]\d{2}:?\d{2}|\.\d{3,6}Z?)?",
-
-                # Matches Unix epoch time (10-digit)
-                # Example: "1718292832"
-                r"\b\d{10}\b",
-
-                # Matches month names with optional suffixes and commas
-                # Examples: "Feb 13, 2025 16:36:02", "February 13 2025 16:36:02"
-                r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4} \d{2}:\d{2}:\d{2}",
-
-                # Matches dates with separators (- or /) and optional month names
-                # Examples: "13-02-2025 16:36:02", "13/Feb/2025 16:36:02", "02-13-2025 16:36:02"
-                r"\d{1,2}[-/](?:0[1-9]|1[0-2]|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-/]\d{4}[ :T]\d{1,2}:\d{2}:\d{2}",
-
-                # Matches dates with slashes and optional commas
-                # Examples: "02/13/2025 16:36:02", "02/13/2025, 4:23:18 PM"
-                r"\d{2,4}/\d{2}/\d{2,4}[, ]\d{1,2}:\d{2}:\d{2}",
-            ]
-
-            self.log_level_patterns = [
-                # Matches log levels in square or round brackets (case-insensitive)
-                # Examples: "[INFO]", "(ERROR)", "[WARNING]", "(debug)"
-                r"(?i)([\[\(])(INFO|ERROR|DEBUG|WARN(ING)?|CRITICAL)([\]\)])",
-
-                # Matches log levels as standalone words with context (case-insensitive)
-                # Examples: "INFO:", "ERROR ", "WARNING)", "DEBUG]"
-                r"(?i)\b(INFO|ERROR|DEBUG|WARN(ING)?|CRITICAL)\b(?=\s|:|\)|\])",
-            ]
             self.patterns = []
-            self.compiled_time_stamp_patterns = [re.compile(pattern) for pattern in self.time_stamp_patterns]
-            self.compiled_log_level_patterns = [re.compile(pattern) for pattern in self.log_level_patterns]
+            self.patterns_count = {pattern: 0 for pattern in self.__class__.COMPILED_STRICT_PATTERNS + self.__class__.COMPILED_FLEX_PATTERNS}
             time.sleep(2)
-            self._find_pattern()
-            self.refresh_pattern_thread = Thread(target=self._refresh_pattern)
-            self.refresh_pattern_thread.daemon = True
-            self.refresh_pattern_thread.start()
+            self.line_count = 0
+            self.line_limit = 200
+            log_tail = self.container.logs(tail=100).decode("utf-8")
+            self._find_pattern(log_tail)
+            # self.refresh_pattern_thread = Thread(target=self._refresh_pattern)
+            # self.refresh_pattern_thread.daemon = True
+            # self.refresh_pattern_thread.start()
 
             self.buffer = []
             self.log_stream_timeout = timeout
@@ -86,8 +96,6 @@ class LogProcessor:
             self.container_keywords_with_file.extend(container_config.get("keywords_with_attachment", []))
 
         logging.info(f"container: {self.container_name}: Keywords: {self.container_keywords}, Keywords with attachment: {self.container_keywords_with_file}")
-        
-        
 
         for keyword in self.container_keywords + self.container_keywords_with_file:
             if isinstance(keyword, dict) and keyword.get("regex") is not None:
@@ -96,61 +104,59 @@ class LogProcessor:
                 self.time_per_keyword[keyword] = 0
 
     
-    def _refresh_pattern(self):
-        counter = 0
-        while not self.shutdown_event.wait(timeout=300) and counter < 12 and self.patterns == []:
-            counter += 1
-            logging.debug(f"Refreshing pattern")
-            self._find_pattern()
-            if self.patterns is not []:
-                logging.info(f"container: {self.container_name}: attern refreshed: {self.patterns}")
-            else:
-                logging.info(f"container: {self.container_name}: Pattern refreshed. No pattern found. Mode: single-line.")
-            logging.debug(f"container: {self.container_name}: Waiting 5 minutes to check again for patterns.")
-        logging.info(f"container: {self.container_name}: Stopping pattern-refreshing. No pattern found in log after 60 minutes. Mode: single-line.")
+    # def _refresh_pattern(self):
+    #     counter = 0
+    #     while not self.shutdown_event.wait(timeout=300) and counter < 12 and self.patterns == []:
+    #         counter += 1
+    #         logging.debug(f"Refreshing pattern")
+    #         self._find_pattern()
+    #         if self.patterns is not []:
+    #             logging.info(f"container: {self.container_name}: attern refreshed: {self.patterns}")
+    #         else:
+    #             logging.info(f"container: {self.container_name}: Pattern refreshed. No pattern found. Mode: single-line.")
+    #         logging.debug(f"container: {self.container_name}: Waiting 5 minutes to check again for patterns.")
+    #     logging.info(f"container: {self.container_name}: Stopping pattern-refreshing. No pattern found in log after 60 minutes. Mode: single-line.")
 
 
-    def _find_pattern(self):
+    def _find_pattern(self, line_s):
         self.waiting_for_pattern = True
-        tmp_patterns = {pattern: 0 for pattern in self.compiled_time_stamp_patterns}
 
-        log_tail = self.container.logs(tail=100).decode("utf-8")
-        for line in log_tail.splitlines():
-            for pattern in self.compiled_time_stamp_patterns:
+        for line in line_s.splitlines():
+            self.line_count += 1
+            for pattern in self.__class__.COMPILED_STRICT_PATTERNS:
                 if pattern.search(line):
-                    tmp_patterns[pattern] += 1
+                    self.patterns_count[pattern] += 1
                     break
-        sorted_patterns = sorted(tmp_patterns.items(), key=lambda x: x[1], reverse=True)
-        
-        total_lines = len(log_tail.splitlines())
-        threshold = max(5, int(total_lines * 0.1))
-
-        self.patterns = []
-        for pattern in sorted_patterns:
-            if pattern[1] > threshold:
-                self.patterns.append(pattern[0])
-                
-        if self.patterns == []:
-            tmp_patterns = {pattern: 0 for pattern in self.compiled_log_level_patterns}
-
-            for line in log_tail.splitlines():
-                for pattern in self.compiled_log_level_patterns:
+            else:
+                for pattern in self.__class__.COMPILED_FLEX_PATTERNS:
                     if pattern.search(line):
-                        tmp_patterns[pattern] += 1
+                        self.patterns_count[pattern] += 1
                         break
+  
+        sorted_patterns = sorted(self.patterns_count.items(), key=lambda x: x[1], reverse=True)
+        threshold = max(5, int(self.line_count * 0.1))
 
-        sorted_patterns = sorted(tmp_patterns.items(), key=lambda x: x[1], reverse=True)
         for pattern in sorted_patterns:
-            if pattern[1] > threshold:
+            if pattern[0] not in self.patterns and pattern[1] > threshold:
                 self.patterns.append(pattern[0])
+                logging.debug(f"container: {self.container_name}: Found pattern: {pattern[0]} with {pattern[1]} matches.")
+                self.valid_pattern = True
 
         if self.patterns == []:
             self.valid_pattern = False
-            logging.info(f"container: {self.container_name}: No pattern found in log. Mode: single-line.")
-        else:
-            self.valid_pattern = True
-            logging.info(f"container: {self.container_name}: Found pattern(s) in log. Mode: multi-line.\nPatterns: {self.patterns}")
+            
+        if self.line_count > self.line_limit:
+            if self.patterns == []:
+                logging.info(f"container: {self.container_name}: No pattern found in log. Mode: single-line after {self.line_limit} lines.")
+            else:   
+                logging.info(f"container: {self.container_name}: Found pattern(s) in log. Stopping the search now after {self.line_limit}] lines. Mode: multi-line.\nPatterns: {self.patterns}")
+                    #     logging.info(f"container: {self.container_name}: No pattern found in log. Mode: single-line.")
+
+        logging.debug(f"container: {self.container_name}: Line_count: {self.line_count} Patterns: {sorted_patterns}")
+        #     self.valid_pattern = True
+        #     logging.info(f"container: {self.container_name}: Found pattern(s) in log. Mode: multi-line.\nPatterns: {self.patterns}")
         self.waiting_for_pattern = False
+
 
     def _check_flush(self):
         while not self.shutdown_event.wait(timeout=1):
@@ -162,6 +168,8 @@ class LogProcessor:
         if self.multi_line_config == False:
             self._search_and_send(line)
         else:
+            if self.line_count < self.line_limit:
+                self._find_pattern(line)
             if self.valid_pattern == True:
                 self._process_multi_line(line)
             else:
