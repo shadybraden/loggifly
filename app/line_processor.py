@@ -13,6 +13,8 @@ logging.getLogger(__name__)
 
 class LogProcessor:
 
+
+
     STRICT_PATTERNS = [
             
         # combined timestamp and log level
@@ -22,26 +24,31 @@ class LogProcessor:
         # ISO in brackets
         r"^\[\d{4}-\d{2}-\d{2}(?:T|, | )\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2}| [+-]\d{4})\]", # [2025-02-17T03:23:07Z] or [2025-02-17 04:22:59 +0100]
 
-        # months in brackets
-        r"^\[(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}, \d{4} \d{2}:\d{2}:\d{2}\]",
+        # Months in brackets
+        r"^\[(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}, \d{4} \d{2}:\d{2}:\d{2}\]",                                                  # [Feb 17, 2025 10:13:02]
+        r"^\[\d{1,2}\/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\/\d{4}(?:\:| |\/)\d{2}:\d{2}:\d{2}(?:Z||\s[+\-]\d{2}:\d{2}|\s[+\-]\d{4})\]", # [17/Feb/2025:10:13:02 +0000]
+
+        # Months without brackets
+        r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}, \d{4} \d{2}:\d{2}:\d{2}\b",
+        r"\b\d{1,2}\/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\/\d{4}(?:\:| |\/)\d{2}:\d{2}:\d{2}(?:Z||\s[+\-]\d{2}:\d{2}|\s[+\-]\d{4})\b",   # 17/Feb/2025:10:13:02 +0000
         
         # Unix-like Timestamps
-        r"^\[\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{2,6}\]",
+        r"^\[\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}\.\d{2,6}\]",
         
         # Log-Level at the beginning of the line
         r"^\[(?:INFO|ERROR|DEBUG|WARN|WARNING|CRITICAL)\]",
         r"^\((?:INFO|ERROR|DEBUG|WARN|WARNING|CRITICAL)\)"
     ]
-                ###     ^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})\]
 
     FLEX_PATTERNS = [
             # ----------------------------------------------------------------
             # Generic Timestamps (Fallback)
             # ----------------------------------------------------------------
+            
             r"\b\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\b",
             r"\b\d{4}-\d{2}-\d{2}(?:T|, | )\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2}| [+-]\d{4})\b", # 2025-02-17T03:23:07Z
             r"\b(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])-\d{4} \d{2}:\d{2}:\d{2}\b",
-            r"(?i)\b\d{2}/\d{2}/\d{4},? \d{1,2}:\d{2}:\d{2} ?(?:AM|PM)?\b",
+            r"(?i)\b\d{2}\/\d{2}\/\d{4}(?:,\s+|:|\s+])\d{1,2}:\d{2}:\d{2}\s*(?:AM|PM)?\b",
             r"\b\d{10}\.\d+\b",                                                          # 1739762586.0394847
            
 
@@ -52,6 +59,9 @@ class LogProcessor:
             r"(?i)(?<=\s)\b(?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\b(?=\s|:|$)",
             r"(?i)\[(?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\]",
             r"(?i)\((?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\)",
+
+            # ## TESTING BECAUSE IT DOES NOT WORK FOR IMMICH SERVER LOGS
+            r"(?i)\d{2}/\d{2}/\d{4},\s+\d{1,2}:\d{2}:\d{2}\s+(?:AM|PM)",
         ]
             
     COMPILED_STRICT_PATTERNS = [re.compile(pattern) for pattern in STRICT_PATTERNS]
@@ -97,9 +107,17 @@ class LogProcessor:
         container_config = self.config["containers"].get(self.container_name, {})
         if isinstance(container_config, list):
             self.container_keywords.extend(container_config)
+            self.lines_number_attachment = int(os.getenv("ATTACHMENT_LINES", self.config.get("settings", {}).get("attachment_lines", 50)))
         elif isinstance(container_config, dict):
             self.container_keywords.extend(container_config.get("keywords", []))
             self.container_keywords_with_file.extend(container_config.get("keywords_with_attachment", []))
+            self.lines_number_attachment = int(self.config.get("containers", {}).get(self.container_name, {}).get("attachment_lines") or os.getenv("ATTACHMENT_LINES", self.config.get("settings", {}).get("attachment_lines", 50)))
+
+
+
+   
+            
+
 
         logging.info(f"container: {self.container_name}: Keywords: {self.container_keywords}, Keywords with attachment: {self.container_keywords_with_file}")
 
@@ -123,19 +141,19 @@ class LogProcessor:
     #         logging.debug(f"container: {self.container_name}: Waiting 5 minutes to check again for patterns.")
     #     logging.info(f"container: {self.container_name}: Stopping pattern-refreshing. No pattern found in log after 60 minutes. Mode: single-line.")
 
-
     def _find_pattern(self, line_s):
         self.waiting_for_pattern = True
 
         for line in line_s.splitlines():
+            clean_line = re.sub(r"\x1b\[[0-9;]*m", "", line)
             self.line_count += 1
             for pattern in self.__class__.COMPILED_STRICT_PATTERNS:
-                if pattern.search(line):
+                if pattern.search(clean_line):
                     self.patterns_count[pattern] += 1
                     break
             else:
                 for pattern in self.__class__.COMPILED_FLEX_PATTERNS:
-                    if pattern.search(line):
+                    if pattern.search(clean_line):
                         self.patterns_count[pattern] += 1
                         break
   
@@ -145,20 +163,20 @@ class LogProcessor:
         for pattern in sorted_patterns:
             if pattern[0] not in self.patterns and pattern[1] > threshold:
                 self.patterns.append(pattern[0])
-                logging.debug(f"container: {self.container_name}: Found pattern: {pattern[0]} with {pattern[1]} matches.")
+                logging.debug(f"container: {self.container_name}: Found pattern: {pattern[0]} with {pattern[1]} matches of {self.line_count} lines. {round(pattern[1] / self.line_count * 100, 2)}%")
                 self.valid_pattern = True
 
         if self.patterns == []:
             self.valid_pattern = False
             
-        if self.line_count > self.line_limit:
+        if self.line_count >= self.line_limit:
             if self.patterns == []:
                 logging.info(f"container: {self.container_name}: No pattern found in log. Mode: single-line after {self.line_limit} lines.")
             else:   
                 logging.info(f"container: {self.container_name}: Found pattern(s) in log. Stopping the search now after {self.line_limit}] lines. Mode: multi-line.\nPatterns: {self.patterns}")
                     #     logging.info(f"container: {self.container_name}: No pattern found in log. Mode: single-line.")
 
-        #logging.debug(f"container: {self.container_name}: Line_count: {self.line_count} Patterns: {sorted_patterns}")
+     #   logging.debug(f"container: {self.container_name}: Line_count: {self.line_count} Patterns: {sorted_patterns}")
         #     self.valid_pattern = True
         #     logging.info(f"container: {self.container_name}: Found pattern(s) in log. Mode: multi-line.\nPatterns: {self.patterns}")
         self.waiting_for_pattern = False
@@ -171,15 +189,16 @@ class LogProcessor:
                     self._handle_and_clear_buffer()
 
     def process_line(self, line):
+        clean_line = re.sub(r"\x1b\[[0-9;]*m", "", line)
         if self.multi_line_config == False:
-            self._search_and_send(line)
+            self._search_and_send(clean_line)
         else:
             if self.line_count <= self.line_limit:
-                self._find_pattern(line)
+                self._find_pattern(clean_line)
             if self.valid_pattern == True:
-                self._process_multi_line(line)
+                self._process_multi_line(clean_line)
             else:
-                self._search_and_send(line)
+                self._search_and_send(clean_line)
 
     def _process_multi_line(self, line):
         while self.waiting_for_pattern == True:
@@ -238,14 +257,10 @@ class LogProcessor:
                     self.time_per_keyword[keyword] = time.time()
 
     def _log_attachment(self):
-        if isinstance(self.config.get("containers").get(self.container_name, {}), dict):
-            lines = int(self.config.get("containers", {}).get(self.container_name, {}).get("attachment_lines") or os.getenv("ATTACHMENT_LINES", self.config.get("settings", {}).get("attachment_lines", 50)))
-        else:
-            lines = int(os.getenv("ATTACHMENT_LINES", self.config.get("settings", {}).get("attachment_lines", 50)))
+        
+        file_name = f"last_{self.lines_number_attachment}_lines_from_{self.container_name}.log"
 
-        file_name = f"last_{lines}_lines_from_{self.container_name}.log"
-
-        log_tail = self.container.logs(tail=lines).decode("utf-8")
+        log_tail = self.container.logs(tail=self.lines_number_attachment).decode("utf-8")
         with open(file_name, "w") as file:  
             file.write(log_tail)
             return file_name

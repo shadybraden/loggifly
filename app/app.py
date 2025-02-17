@@ -32,8 +32,12 @@ def set_logging(config):
     logging.info("This is an Info-Message")
     logging.warning("This is a Warning-Message")
 
+
+def str_to_bool(value: str) -> bool:
+    return value.lower() == "true"
+
 def handle_signal(signum, frame):
-    if bool(os.getenv("DISABLE_SHUTDOWN_MESSAGE", config.get("settings", {}).get("disable_shutdown_message", False))) == False:
+    if str_to_bool(str(os.getenv("DISABLE_SHUTDOWN_MESSAGE", config.get("settings", {}).get("disable_shutdown_message", False)))) is False:
         send_notification(config, "Loggifly:", "The programm is shutting down.")
 
     logging.info(f"Signal {signum} received. shutting down...")
@@ -80,11 +84,14 @@ def load_config():
     config["notifications"]["apprise"] = {
         "url": os.getenv("APPRISE_URL", config["notifications"].get("apprise", {}).get("url", "")),
     }
-    config["containers"] = config.get("containers", [])
 
     config["settings"] = {
-        "multi_line_entries": os.getenv("MULTI_LINE_ENTRIES", config.get("settings", {}).get("multi_line_entries", True)),
-        "notification_cooldown": os.getenv("NOTIFICATION_COOLDOWN", config.get("settings", {}).get("notification_cooldown", 10))
+        "multi_line_entries": str_to_bool(str(str(os.getenv("MULTI_LINE_ENTRIES", config.get("settings", {}).get("multi_line_entries", True))))),
+        "notification_cooldown": os.getenv("NOTIFICATION_COOLDOWN", config.get("settings", {}).get("notification_cooldown", 10)),
+        "disable_restart_message": str_to_bool(str(os.getenv("DISABLE_RESTART_MESSAGE", config.get("settings", {}).get("disable_restart_message", False)))),
+        "disable_restart": str_to_bool(str(os.getenv("DISABLE_RESTART", config.get("settings", {}).get("disable_restart", False)))),
+        "disable_start_message": str_to_bool(str(os.getenv("DISABLE_START_MESSAGE", config.get("settings", {}).get("disable_start_message", False)))),
+        "disable_shutdown_message": str_to_bool(str(os.getenv("DISABLE_SHUTDOWN_MESSAGE", config.get("settings", {}).get("disable_shutdown_message", False))))
     }
 
     if isinstance(config.get("global_keywords"), list):
@@ -102,7 +109,7 @@ def load_config():
 
 
 def restart_docker_container():
-    if bool(os.getenv("DISABLE_RESTART_MESSAGE", config.get("settings", {}).get("disable_restart_message", False))) == False:
+    if config["settings"]["disable_restart_message"] is False:
         send_notification(config, "Loggifly:", "Config Change detected. The programm is restarting.")
     logging.info("The programm is restarting.")
     client = docker.from_env()
@@ -193,7 +200,7 @@ def main(config):
     else:
         unmonitored_containers_str = ""
 
-    if bool(os.getenv("DISABLE_START_MESSAGE", config.get("settings", {}).get("disable_start_message", False))) == False:
+    if bool(config["settings"]["disable_start_message"]) is False:
         send_notification(config, "Loggifly", f"The programm is running and monitoring these selected Containers:\n - {containers_to_monitor_str}{unmonitored_containers_str}")
     
     for container in containers_to_monitor:
@@ -202,7 +209,7 @@ def main(config):
         thread.start()
 
 
-    if bool(os.getenv("DISABLE_RESTART", config.get("settings", {}).get("disable_restart", False))) == False:
+    if config["settings"]["disable_restart"] is False:
         thread_file_change = threading.Thread(target=detect_config_changes)
         threads.append(thread_file_change)
         thread_file_change.start()
