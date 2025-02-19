@@ -33,8 +33,6 @@ def set_logging(config):
     logging.warning("This is a Warning-Message")
 
 
-def str_to_bool(value: str) -> bool:
-    return value.lower() == "true"
 
 def handle_signal(signum, frame):
     if str_to_bool(str(os.getenv("DISABLE_SHUTDOWN_MESSAGE", config.get("settings", {}).get("disable_shutdown_message", False)))) is False:
@@ -47,6 +45,8 @@ signal.signal(signal.SIGTERM, handle_signal)
 signal.signal(signal.SIGINT, handle_signal)
 
 
+def str_to_bool(value: str) -> bool:
+    return value.lower() == "true"
 
 def load_config():
     """
@@ -104,8 +104,8 @@ def load_config():
             "keywords": config.get("global_keywords", {}).get("keywords", ""),
             "keywords_with_attachment": config.get("global_keywords", {}).get("keywords_with_attachment", "")
         }
-
     return config
+
 
 
 def restart_docker_container():
@@ -147,22 +147,29 @@ def monitor_container_logs(config, client, container):
 
     now = datetime.now()
     processor = LogProcessor(config, container, shutdown_event, timeout=5)  
-    
+    buffer = b""
     try:
         log_stream = container.logs(stream=True, follow=True, since=now)
         logging.info("Monitoring for Container started: %s", container.name)
 
-        for log_line in log_stream:
+        for chunk in log_stream:
             if shutdown_event.is_set():
                 logging.debug(f"Noticed that shutdown_event.is_set in monitor_container_logs() function for {container.name}. Closing client now")
                 client.close()
                 break
-            try:
-                log_line_decoded = str(log_line.decode("utf-8")).strip()
-                if log_line_decoded:
+
+            buffer += chunk
+
+            while b'\n' in buffer:
+                line, buffer = buffer.split(b'\n', 1)
+                try:
+                    log_line_decoded = str(line.decode("utf-8")).strip()
+                except UnicodeDecodeError:
+                    log_line_decoded = line.decode("utf-8", errors="replace").strip()
+                    logging.warning(f"{container.name}: Error while trying to decode a log line. Used errors='replace' for line: {log_line_decoded}")
+                if log_line_decoded: 
                     processor.process_line(log_line_decoded)
-            except UnicodeDecodeError:
-                logging.warning("Error while trying to decode a log line %s", container.name)
+
     except docker.errors.APIError as e:
         logging.error("Docker API-Errorer for Container %s: %s", container.name, e)
     except Exception as e:
