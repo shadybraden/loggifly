@@ -1,6 +1,5 @@
 import requests
 import logging
-import os
 import urllib.parse
 import apprise
 from load_config import GlobalConfig
@@ -31,7 +30,7 @@ def send_apprise_notification(url, container_name, message, keyword=None, file_n
                 body=message,
                 attach=file_name
             )
-        logging.info("Apprise-Notification sent successfully: %s", message)
+        logging.info("Apprise-Notification sent successfully")
     except Exception as e:
         logging.error("Error while trying to send apprise-notification: %s", e)
 
@@ -40,11 +39,8 @@ def send_ntfy_notification(config, container_name, message, keyword=None, file_n
     """
     Sendet eine Benachrichtigung an den ntfy-Server.
     """
-    
     ntfy_url = config.notifications.ntfy.url
-    ntfy_token = config.notifications.ntfy.token.get_secret_value()
-
-
+    
     if container_name in [c for c in config.containers]:
         ntfy_topic = config.containers[container_name].ntfy_topic or config.notifications.ntfy.topic
         ntfy_tags = config.containers[container_name].ntfy_tags or config.notifications.ntfy.tags
@@ -54,19 +50,16 @@ def send_ntfy_notification(config, container_name, message, keyword=None, file_n
         ntfy_tags = config.notifications.ntfy.tags
         ntfy_priority = config.notifications.ntfy.priority
 
-
-    if not ntfy_url or not ntfy_topic or not ntfy_token:
-        logging.error("Ntfy-Konfiguration fehlt. Benachrichtigung nicht möglich.")
-        return
-
     message = ("This message had to be shortened: \n" if len(message) > 3900 else "") + message[:3900]
 
+
     headers = {
-        "Authorization": f"Bearer {ntfy_token}",
         "Tags": f"{ntfy_tags}",
         "Icon": "https://raw.githubusercontent.com/clemcer/logsend/refs/heads/main/icon.png?token=GHSAT0AAAAAAC5ITTW6BMYID4P2XDAGI46MZ5LMHGA",
         "Priority": f"{ntfy_priority}"
     }
+    if config.notifications.ntfy.token:
+        headers["Authorization"] = f"Bearer {config.notifications.ntfy.token.get_secret_value()}"
 
     if keyword is None:
         headers["Title"] = f"{container_name}"
@@ -101,7 +94,7 @@ def send_ntfy_notification(config, container_name, message, keyword=None, file_n
                 headers=headers
             )
         if response.status_code == 200:
-            logging.info("Ntfy-Notification sent successfully: %s", message)
+            logging.info("Ntfy-Notification sent successfully")
         else:
             logging.error("Error while trying to send ntfy-notification: %s", response.text)
     except requests.RequestException as e:
@@ -109,14 +102,14 @@ def send_ntfy_notification(config, container_name, message, keyword=None, file_n
 
 
 
-def send_notification(config, container_name, message, keyword=None, file_name=None):
-    ntfy_url = config.notifications.ntfy.url
-    ntfy_token = config.notifications.ntfy.token
-    if ntfy_url and ntfy_token:
+def send_notification(config: GlobalConfig, container_name, message, keyword=None, file_name=None):
+    if (config.notifications and config.notifications.ntfy and config.notifications.ntfy.url and config.notifications.ntfy.topic):
         send_ntfy_notification(config, container_name, message, keyword, file_name)
 
-    apprise_url = config.notifications.apprise.url.get_secret_value()
-    if apprise_url:
+
+    if (config.notifications and config.notifications.apprise and config.notifications.apprise.url):
+        apprise_url = config.notifications.apprise.url.get_secret_value()
         send_apprise_notification(apprise_url, container_name, message, keyword, file_name)
+   
 
    

@@ -47,8 +47,7 @@ class LogProcessor:
             r"\b(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])-\d{4} \d{2}:\d{2}:\d{2}\b",
             r"(?i)\b\d{2}\/\d{2}\/\d{4}(?:,\s+|:|\s+])\d{1,2}:\d{2}:\d{2}\s*(?:AM|PM)?\b",
             r"\b\d{10}\.\d+\b",                                                          # 1739762586.0394847
-           
-
+        
             # ----------------------------------------------------------------
             # Log-Level (Fallback)
             # ----------------------------------------------------------------
@@ -69,8 +68,10 @@ class LogProcessor:
         self.config = config
         self.container = container
         self.container_name = container.name
-        self.container_keywords = list(config.global_keywords.keywords) + list(config.containers[self.container_name].keywords)
-        self.container_keywords_with_file = list(config.global_keywords.keywords_with_attachment) + list(config.containers[self.container_name].keywords)
+        self.container_keywords = config.global_keywords.keywords.copy()
+        self.container_keywords.extend(keyword for keyword in config.containers[self.container_name].keywords if keyword not in self.container_keywords)
+        self.container_keywords_with_file = config.global_keywords.keywords_with_attachment.copy()
+        self.container_keywords_with_file.extend(keyword for keyword in config.containers[self.container_name].keywords_with_attachment if keyword not in self.container_keywords_with_file)
         self.lines_number_attachment = config.containers[self.container_name].attachment_lines or config.settings.attachment_lines
         self.multi_line_config = config.settings.multi_line_entries
         self.notification_cooldown = config.settings.notification_cooldown
@@ -156,11 +157,7 @@ class LogProcessor:
                 logging.info(f"container: {self.container_name}: No pattern found in log. Mode: single-line after {self.line_limit} lines.")
             else:   
                 logging.info(f"container: {self.container_name}: Found pattern(s) in log. Stopping the search now after {self.line_limit}] lines. Mode: multi-line.\nPatterns: {self.patterns}")
-                    #     logging.info(f"container: {self.container_name}: No pattern found in log. Mode: single-line.")
 
-     #   logging.debug(f"container: {self.container_name}: Line_count: {self.line_count} Patterns: {sorted_patterns}")
-        #     self.valid_pattern = True
-        #     logging.info(f"container: {self.container_name}: Found pattern(s) in log. Mode: multi-line.\nPatterns: {self.patterns}")
         self.waiting_for_pattern = False
 
 
@@ -175,7 +172,7 @@ class LogProcessor:
         if self.multi_line_config == False:
             self._search_and_send(clean_line)
         else:
-            if self.line_count <= self.line_limit:
+            if self.line_count < self.line_limit:
                 self._find_pattern(clean_line)
             if self.valid_pattern == True:
                 self._process_multi_line(clean_line)
@@ -219,23 +216,26 @@ class LogProcessor:
                 #logging.debug(f"Searching for regex-keyword: {regex_keyword}")
                 if time.time() - self.time_per_keyword.get(regex_keyword) >= int(self.notification_cooldown):
                     if re.search(regex_keyword, log_line, re.IGNORECASE):
+                        formatted_log_entry = ' | ' + '\n | '.join(log_line.splitlines())
                         if keyword in self.container_keywords_with_file:
-                            logging.info(f"Regex-Keyword (with attachment) '{regex_keyword}' was found in {self.container_name}: {log_line}")
+                            logging.info(f"Regex-Keyword (with attachment) '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}")
                             self._send_message(log_line, regex_keyword, send_attachment=True)
                         else:
                             self._send_message(log_line, regex_keyword, send_attachment=False)
-                            logging.info(f"Regex-Keyword '{keyword}' was found in {self.container_name}: {log_line}")
+                            logging.info(f"Regex-Keyword '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}")
                         self.time_per_keyword[regex_keyword] = time.time()
 
             elif str(keyword).lower() in log_line.lower():
+                formatted_log_entry = ' | ' + '\n | '.join(log_line.splitlines())
                # logging.debug(f"Searching for keyword: {keyword}")
                 if time.time() - self.time_per_keyword.get(keyword) >= int(self.notification_cooldown):
                     if keyword in self.container_keywords_with_file:
-                        logging.info(f"Keyword (with attachment) '{keyword}' was found in {self.container_name}: {log_line}") 
+                        logging.info(f"Keyword (with attachment) '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}")
                         self._send_message(log_line, keyword, send_attachment=True)
                     else:
                         self._send_message(log_line, keyword, send_attachment=False)
-                        logging.info(f"Keyword '{keyword}' was found in {self.container_name}: {log_line}") 
+                        logging.info(f"Keyword '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}")
+
                     self.time_per_keyword[keyword] = time.time()
 
     def _log_attachment(self):  

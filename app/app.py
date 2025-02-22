@@ -145,7 +145,7 @@ def main(config):
     containers_to_monitor = [c for c in containers if c.name in selected_containers]
     containers_to_monitor_str = "\n - ".join(c.name for c in containers_to_monitor)
     
-    logging.info(f"These containers are being monitored: {[c.name for c in containers_to_monitor]}")
+    logging.info(f"These containers are being monitored: {containers_to_monitor_str}")
    
     unmonitored_containers = [c for c in selected_containers if c not in [c.name for c in containers_to_monitor]]
     if unmonitored_containers:
@@ -190,6 +190,7 @@ def main(config):
 
 if __name__ == "__main__":
     set_logging(config)
-    logging.info(f"CONFIG:\n{config.model_dump_json(indent=2)}")
+    # logging.info(f"CONFIG:\n{config.model_dump_json(indent=2, exclude_unset=True)}")
+    logging.info(f"CONFIG:\n{config.model_dump_json(indent=2, exclude_none=True)}")
     main(config)
     

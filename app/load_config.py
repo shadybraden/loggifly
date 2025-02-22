@@ -31,6 +31,11 @@ class NtfyConfig(BaseModel):
 
     @field_validator("priority")
     def validate_priority(cls, v):
+        if isinstance(v, str):
+            try:
+                v = int(v)
+            except ValueError:
+                pass
         if isinstance(v, int):
             if not 1 <= int(v) <= 5:
                 raise ValueError("Priority must be between 1-5")
@@ -65,9 +70,19 @@ class ContainerConfig(BaseModel):
     keywords_with_attachment: List[str] = []
 
     @field_validator("ntfy_priority")
-    def validate_container_priority(cls, v):
-        if v and not 1 <= int(v) <= 5:
-            raise ValueError("Ntfy piority must be between 1-5")
+    def validate_priority(cls, v):
+        if isinstance(v, str):
+            try:
+                v = int(v)
+            except ValueError:
+                pass
+        if isinstance(v, int):
+            if not 1 <= int(v) <= 5:
+                raise ValueError("Priority must be between 1-5")
+        if isinstance(v, str):
+            options = ["max", "urgent", "high", "default", "low", "min"]
+            if v not in options:
+                raise ValueError(f"Priority must be one of {options}")
         return v
 class GlobalKeywords(BaseModel):
     keywords: List[str] = []
@@ -136,10 +151,10 @@ def merge_yaml_and_env(yaml, env_update):
     return yaml
 
 
-def load_config():
+def load_config(path="/app/config.yaml"):
     yaml_config = {}
     try:
-        with open("/app/config.yaml", "r") as file:
+        with open(path, "r") as file:
             yaml_config = yaml.safe_load(file)
             logging.info("Konfigurationsdatei erfolgreich geladen.")
     except FileNotFoundError:
@@ -147,7 +162,9 @@ def load_config():
     """
     -------------------------LOAD ENVIRONMENT VARIABLES---------------------
     """
-    env_config = { "notifications": {}, "settings": {}}
+    env_config = { "notifications": {}, "settings": {}, "global_keywords": {}, 
+                  "containers": os.getenv("CONTAINERS", "").split(",") if os.getenv("CONTAINERS") else None
+                  }
     settings_values = {
         "log_level": os.getenv("LOG_LEVEL"),
         "attachment_lines": os.getenv("ATTACHMENT_LINES"),
@@ -168,21 +185,27 @@ def load_config():
     apprise_values = {
         "url": os.getenv("APPRISE_URL")
     }
+    global_keywords_values = {
+        "keywords": os.getenv("GLOBAL_KEYWORDS", "").split(",") if os.getenv("GLOBAL_KEYWORDS") else [],
+        "keywords_with_attachment": os.getenv("GLOBAL_KEYWORDS_WITH_ATTACHMENT", "").split(",") if os.getenv("GLOBAL_KEYWORDS_WITH_ATTACHMENT") else []
+    }
     if any(ntfy_values.values()):
         env_config["notifications"]["ntfy"] = ntfy_values
     if apprise_values["url"]: 
         env_config["notifications"]["apprise"] = apprise_values
+    for k, v in global_keywords_values.items():
+        if v:
+            env_config["global_keywords"][k]= v
     for key, value in settings_values.items(): 
         if value is not None:
             env_config["settings"][key] = value
-
     
-    print(f"\nYAML: {yaml_config}\n")
+    # logging.info(f"\nYAML: {yaml_config}\n")
 
     merged_config = merge_yaml_and_env(yaml_config, env_config)
-    print(f"\nENV: {env_config}\n")
+    # logging.info(f"\nENV: {env_config}\n")
 
-    print(f"\nMERGED: {merged_config}\n")
+    # logging.info(f"\nMERGED: {merged_config}\n")
 
     config = GlobalConfig.model_validate(merged_config)
     return config
