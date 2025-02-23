@@ -66,6 +66,7 @@ class ContainerConfig(BaseModel):
     ntfy_topic: Optional[str] = None
     ntfy_priority: Optional[int] = None
     attachment_lines: Optional[int] = None
+    notification_cooldown: Optional[int] = None
     keywords: List[Union[str, Dict[str, str]]] = []
     keywords_with_attachment: List[str] = []
 
@@ -162,9 +163,7 @@ def load_config(path="/app/config.yaml"):
     """
     -------------------------LOAD ENVIRONMENT VARIABLES---------------------
     """
-    env_config = { "notifications": {}, "settings": {}, "global_keywords": {}, 
-                  "containers": os.getenv("CONTAINERS", "").split(",") if os.getenv("CONTAINERS") else None
-                  }
+    env_config = { "notifications": {}, "settings": {}, "global_keywords": {}, "containers": {}}
     settings_values = {
         "log_level": os.getenv("LOG_LEVEL"),
         "attachment_lines": os.getenv("ATTACHMENT_LINES"),
@@ -189,6 +188,9 @@ def load_config(path="/app/config.yaml"):
         "keywords": os.getenv("GLOBAL_KEYWORDS", "").split(",") if os.getenv("GLOBAL_KEYWORDS") else [],
         "keywords_with_attachment": os.getenv("GLOBAL_KEYWORDS_WITH_ATTACHMENT", "").split(",") if os.getenv("GLOBAL_KEYWORDS_WITH_ATTACHMENT") else []
     }
+    if os.getenv("CONTAINERS"):
+        for c in os.getenv("CONTAINERS", "").split(","):
+            env_config["containers"][c] = {}
     if any(ntfy_values.values()):
         env_config["notifications"]["ntfy"] = ntfy_values
     if apprise_values["url"]: 
@@ -208,6 +210,8 @@ def load_config(path="/app/config.yaml"):
     # logging.info(f"\nMERGED: {merged_config}\n")
 
     config = GlobalConfig.model_validate(merged_config)
+    logging.info(f"\n ------------- CONFIG ------------- \n{config.model_dump_json(indent=2, exclude_none=True)}")
+
     return config
 
 

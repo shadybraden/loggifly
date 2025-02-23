@@ -191,6 +191,6 @@ def main(config):
 if __name__ == "__main__":
     set_logging(config)
     # logging.info(f"CONFIG:\n{config.model_dump_json(indent=2, exclude_unset=True)}")
-    logging.info(f"CONFIG:\n{config.model_dump_json(indent=2, exclude_none=True)}")
+    # logging.info(f"CONFIG:\n{config.model_dump_json(indent=2, exclude_none=True)}")
     main(config)
     

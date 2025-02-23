@@ -6,6 +6,7 @@ import logging
 import threading
 from threading import Thread, Lock
 from notifier import send_notification
+from load_config import GlobalConfig
 
 class LogProcessor:
 
@@ -63,7 +64,7 @@ class LogProcessor:
     COMPILED_STRICT_PATTERNS = [re.compile(pattern) for pattern in STRICT_PATTERNS]
     COMPILED_FLEX_PATTERNS = [re.compile(pattern) for pattern in FLEX_PATTERNS]
 
-    def __init__(self, config, container, shutdown_event, timeout=1):
+    def __init__(self, config: GlobalConfig, container, shutdown_event, timeout=1):
         self.shutdown_event = shutdown_event
         self.config = config
         self.container = container
@@ -74,7 +75,7 @@ class LogProcessor:
         self.container_keywords_with_file.extend(keyword for keyword in config.containers[self.container_name].keywords_with_attachment if keyword not in self.container_keywords_with_file)
         self.lines_number_attachment = config.containers[self.container_name].attachment_lines or config.settings.attachment_lines
         self.multi_line_config = config.settings.multi_line_entries
-        self.notification_cooldown = config.settings.notification_cooldown
+        self.notification_cooldown = config.containers[self.container_name].notification_cooldown or config.settings.notification_cooldown
         self.time_per_keyword = {}   
         for keyword in self.container_keywords + self.container_keywords_with_file:
             if isinstance(keyword, dict) and keyword.get("regex") is not None:
