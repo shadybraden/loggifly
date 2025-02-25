@@ -8,8 +8,13 @@ from threading import Thread, Lock
 from notifier import send_notification
 from load_config import GlobalConfig
 
-class LogProcessor:
 
+
+class LogProcessor:
+    """
+    LoggiFly seearches for patterns that signal the start of a log entry to detect entries that span over multiple lines.
+    That is what these patterns are for.
+    """
     STRICT_PATTERNS = [
             
         # combined timestamp and log level
@@ -61,8 +66,8 @@ class LogProcessor:
             r"(?i)\d{2}/\d{2}/\d{4},\s+\d{1,2}:\d{2}:\d{2}\s+(?:AM|PM)",
         ]
             
-    COMPILED_STRICT_PATTERNS = [re.compile(pattern) for pattern in STRICT_PATTERNS]
-    COMPILED_FLEX_PATTERNS = [re.compile(pattern) for pattern in FLEX_PATTERNS]
+    COMPILED_STRICT_PATTERNS = [re.compile(pattern, re.ASCII) for pattern in STRICT_PATTERNS]
+    COMPILED_FLEX_PATTERNS = [re.compile(pattern, re.ASCII) for pattern in FLEX_PATTERNS]
 
     def __init__(self, config: GlobalConfig, container, shutdown_event, timeout=1):
         self.shutdown_event = shutdown_event
@@ -91,7 +96,7 @@ class LogProcessor:
             self.patterns_count = {pattern: 0 for pattern in self.__class__.COMPILED_STRICT_PATTERNS + self.__class__.COMPILED_FLEX_PATTERNS}
             time.sleep(2)
             self.line_count = 0
-            self.line_limit = 200
+            self.line_limit = 300
             log_tail = self.container.logs(tail=100).decode("utf-8")
             self._find_pattern(log_tail)
             # self.refresh_pattern_thread = Thread(target=self._refresh_pattern)
@@ -107,11 +112,6 @@ class LogProcessor:
             self.flush_thread.daemon = True
             self.flush_thread.start()
 
-        
-
-        
-
-    
     # def _refresh_pattern(self):
     #     counter = 0
     #     while not self.shutdown_event.wait(timeout=300) and counter < 12 and self.patterns == []:
@@ -127,7 +127,6 @@ class LogProcessor:
 
     def _find_pattern(self, line_s):
         self.waiting_for_pattern = True
-
         for line in line_s.splitlines():
             clean_line = re.sub(r"\x1b\[[0-9;]*m", "", line)
             self.line_count += 1
@@ -142,17 +141,15 @@ class LogProcessor:
                         break
   
         sorted_patterns = sorted(self.patterns_count.items(), key=lambda x: x[1], reverse=True)
-        threshold = max(5, int(self.line_count * 0.1))
+        threshold = max(5, int(self.line_count * 0.075))
 
         for pattern in sorted_patterns:
             if pattern[0] not in self.patterns and pattern[1] > threshold:
                 self.patterns.append(pattern[0])
                 logging.debug(f"container: {self.container_name}: Found pattern: {pattern[0]} with {pattern[1]} matches of {self.line_count} lines. {round(pattern[1] / self.line_count * 100, 2)}%")
                 self.valid_pattern = True
-
         if self.patterns == []:
             self.valid_pattern = False
-            
         if self.line_count >= self.line_limit:
             if self.patterns == []:
                 logging.info(f"container: {self.container_name}: No pattern found in log. Mode: single-line after {self.line_limit} lines.")
@@ -161,13 +158,16 @@ class LogProcessor:
 
         self.waiting_for_pattern = False
 
-
+    # Every second the buffer which consists of log lines that are not new entries is flushed because there won't be a log entry that produces lines over one second
     def _check_flush(self):
         while not self.shutdown_event.wait(timeout=1):
             with self.lock_buffer:
                 if (time.time() - self.log_stream_last_updated > self.log_stream_timeout) and self.buffer:
                     self._handle_and_clear_buffer()
 
+    # This is the only function that gets called from outside this class by the monitor_container_logs function in app.py
+    # If the user disabled it or if there are not patterns detected (yet) the programm switches to single-line mode
+    # In single-line mode the line gets processed and searched for keywords instantly instead of going into the buffer first
     def process_line(self, line):
         clean_line = re.sub(r"\x1b\[[0-9;]*m", "", line)
         if self.multi_line_config == False:
@@ -181,10 +181,12 @@ class LogProcessor:
                 self._search_and_send(clean_line)
 
     def _process_multi_line(self, line):
+        # When the pattern gets updated by _find_pattern() this function waits 
         while self.waiting_for_pattern == True:
             time.sleep(1)
 
         for pattern in self.patterns:
+            # If there is a pattern in the line idicating a new log entry the buffer gets flushed and the line gets appended to the buffer           
             if pattern.search(line):
                 if self.buffer:
                     self._handle_and_clear_buffer()
@@ -193,6 +195,7 @@ class LogProcessor:
                 break
             else:
                 match = False
+        # If the line is not a new entry (no pattern was found) it gets appended to the buffer
         if match is False:
             if self.buffer:
                 self.buffer.append(line)
@@ -201,41 +204,38 @@ class LogProcessor:
                 self.buffer.append(line)
         self.log_stream_last_updated = time.time()
 
+    # This function is called either when the buffer is flushed every second 
+    # or if a new log entry was found which means everything in the buffer is one complete log entry
     def _handle_and_clear_buffer(self):
         message = "\n".join(self.buffer)
-        #logging.debug(f"MESSAGE: \n{message}\nMESSAGE END")
         self._search_and_send(message)
         self.buffer.clear()
 
-
-
+    # Here the line is searchd for simple keywords or regex patterns
     def _search_and_send(self, log_line):
-      #  logging.debug(f"Searching for keywords in: {log_line}, {self.local_keywords}, {self.local_keywords_with_file}")
         for keyword in self.container_keywords + self.container_keywords_with_file:
             if isinstance(keyword, dict) and keyword.get("regex") is not None:
                 regex_keyword = keyword["regex"]
-                #logging.debug(f"Searching for regex-keyword: {regex_keyword}")
                 if time.time() - self.time_per_keyword.get(regex_keyword) >= int(self.notification_cooldown):
                     if re.search(regex_keyword, log_line, re.IGNORECASE):
                         formatted_log_entry = ' | ' + '\n | '.join(log_line.splitlines())
                         if keyword in self.container_keywords_with_file:
-                            logging.info(f"Regex-Keyword (with attachment) '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}")
+                            logging.info(f"Regex-Keyword (with attachment) '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}\n   -----------------------")
                             self._send_message(log_line, regex_keyword, send_attachment=True)
                         else:
-                            self._send_message(log_line, regex_keyword, send_attachment=False)
-                            logging.info(f"Regex-Keyword '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}")
+                            self._send_message(log_line, regex_keyword, send_attachment=False)         
+                            logging.info(f"Regex-Keyword '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry} \n   -----------------------")
                         self.time_per_keyword[regex_keyword] = time.time()
 
             elif str(keyword).lower() in log_line.lower():
                 formatted_log_entry = ' | ' + '\n | '.join(log_line.splitlines())
-               # logging.debug(f"Searching for keyword: {keyword}")
                 if time.time() - self.time_per_keyword.get(keyword) >= int(self.notification_cooldown):
                     if keyword in self.container_keywords_with_file:
-                        logging.info(f"Keyword (with attachment) '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}")
+                        logging.info(f"Keyword (with attachment) '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}\n   -----------------------")
                         self._send_message(log_line, keyword, send_attachment=True)
                     else:
                         self._send_message(log_line, keyword, send_attachment=False)
-                        logging.info(f"Keyword '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}")
+                        logging.info(f"Keyword '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}\n   -----------------------")
 
                     self.time_per_keyword[keyword] = time.time()
 
@@ -247,7 +247,6 @@ class LogProcessor:
             return file_name
 
     def _send_message(self, message, keyword, send_attachment=False):
-       # logging.debug(f"SENDE NACHRICHT: \n{message}\nNACHRICHT ENDE")
         if send_attachment:
             file_name = self._log_attachment()
             send_notification(self.config, self.container_name, message, keyword, file_name)     

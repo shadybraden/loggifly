@@ -149,8 +149,8 @@ def main(config):
    
     unmonitored_containers = [c for c in selected_containers if c not in [c.name for c in containers_to_monitor]]
     if unmonitored_containers:
-        unmonitored_containers_str = "\n \n These selected Containers are not running:\n - " + "\n - ".join(unmonitored_containers)
-        logging.info(f"These containers from your config are not running {unmonitored_containers_str}")
+        unmonitored_containers_str = "\n - ".join(unmonitored_containers)
+        logging.info(f"These selected Containers are not running:\n - {unmonitored_containers_str}")
     else:
         unmonitored_containers_str = ""
 
@@ -184,9 +184,8 @@ def main(config):
             logging.info("Monitoring new container: %s", container_from_event.name)
             send_notification(config, "Loggifly", f"Monitoring new container: {container_from_event.name}")
 
-
-    # for thread in threads:
-    #     thread.join()
+    for thread in threads:
+        thread.join()
 
 if __name__ == "__main__":
     set_logging(config)

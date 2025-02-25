@@ -56,7 +56,7 @@ class NotificationsConfig(BaseModel):
     @model_validator(mode="after")
     def check_at_least_one(self) -> "NotificationsConfig":
         if self.ntfy is None and self.apprise is None:
-            raise ValueError("Mindestens eine Konfiguration (apprise oder ntfy) muss angegeben werden.")
+            raise ValueError("At least on of these two Apprise / Ntfy has to be configured.")
         return self
 
 class ContainerConfig(BaseModel):
@@ -157,9 +157,11 @@ def load_config(path="/app/config.yaml"):
     try:
         with open(path, "r") as file:
             yaml_config = yaml.safe_load(file)
-            logging.info("Konfigurationsdatei erfolgreich geladen.")
+            logging.info("config.yaml succesfully loaded.")
+            no_config_file = False
     except FileNotFoundError:
-        logging.warning("config.yaml nicht gefunden. Verwende nur Umgebungsvariablen.")
+        logging.warning("config.yaml not found. Only using environment variables.")
+        no_config_file = True
     """
     -------------------------LOAD ENVIRONMENT VARIABLES---------------------
     """
@@ -169,7 +171,7 @@ def load_config(path="/app/config.yaml"):
         "attachment_lines": os.getenv("ATTACHMENT_LINES"),
         "multi_line_entries": os.getenv("MULTI_LINE_ENTRIES"),
         "notification_cooldown": os.getenv("NOTIFICATION_COOLDOWN"),
-        "disable_restart": os.getenv("DISABLE_RESTART"),
+        "disable_restart": no_config_file if no_config_file is True else os.getenv("DISABLE_RESTART"),
         "disable_start_message": os.getenv("DISABLE_START_MESSAGE"),
         "disable_restart_message": os.getenv("DISABLE_RESTART_MESSAGE"),
         "disable_shutdown_message": os.getenv("DISABLE_SHUTDOWN_MESSAGE")
@@ -184,12 +186,15 @@ def load_config(path="/app/config.yaml"):
     apprise_values = {
         "url": os.getenv("APPRISE_URL")
     }
+
+
     global_keywords_values = {
-        "keywords": os.getenv("GLOBAL_KEYWORDS", "").split(",") if os.getenv("GLOBAL_KEYWORDS") else [],
-        "keywords_with_attachment": os.getenv("GLOBAL_KEYWORDS_WITH_ATTACHMENT", "").split(",") if os.getenv("GLOBAL_KEYWORDS_WITH_ATTACHMENT") else []
+        "keywords": [kw.strip() for kw in os.getenv("GLOBAL_KEYWORDS", "").split(",") if kw.strip()] if os.getenv("GLOBAL_KEYWORDS") else [],
+        "keywords_with_attachment": [kw.strip() for kw in os.getenv("GLOBAL_KEYWORDS_WITH_ATTACHMENT", "").split(",") if kw.strip()] if os.getenv("GLOBAL_KEYWORDS_WITH_ATTACHMENT") else [],
     }
     if os.getenv("CONTAINERS"):
         for c in os.getenv("CONTAINERS", "").split(","):
+            c = c.strip()
             env_config["containers"][c] = {}
     if any(ntfy_values.values()):
         env_config["notifications"]["ntfy"] = ntfy_values
@@ -201,65 +206,12 @@ def load_config(path="/app/config.yaml"):
     for key, value in settings_values.items(): 
         if value is not None:
             env_config["settings"][key] = value
-    
-    # logging.info(f"\nYAML: {yaml_config}\n")
 
     merged_config = merge_yaml_and_env(yaml_config, env_config)
-    # logging.info(f"\nENV: {env_config}\n")
 
-    # logging.info(f"\nMERGED: {merged_config}\n")
 
     config = GlobalConfig.model_validate(merged_config)
-    logging.info(f"\n ------------- CONFIG ------------- \n{config.model_dump_json(indent=2, exclude_none=True)}")
+    logging.info(f"\n ------------- CONFIG ------------- \n{config.model_dump_json(indent=2, exclude_none=True)}\n ----------------------------------")
 
     return config
 
-
-# os.environ["NTFY_URL"] = "ENV_URL"
-# os.environ["LOG_LEVEL"] = "ERROR"
-
-if __name__ == "__main__":
-
-    print(f"\n\n-------------------")
-
-
-    config = load_config()
-    print(config.model_dump_json(indent=1))
-
-    # print(hasattr(config.containers["audiobookshelf"], "ntfy_topic"))
-    # # print(dir(config.containers["audiobookshelf"]))
-
-    # # print(config.containers)
-    # print(config.containers["audiobookshelf"].model_dump())
-    # if config.containers["audiobookshelf"].ntfy_topic:
-    #     print("YES")
-    # else:
-    #     print("No")
-    # # print(GlobalConfig.model_json_schema())#
-    # for c in config.containers:
-    #     print(c)
-    # print(config.settings.disable_restart)
-
-    # print("HIER")
-    # value = getattr(config.containers["audiobookshelf"], "ntfy_priority", config.notifications.ntfy.priority)
-    # print(value)
-
-    # print()
-    # print()
-    # container_config = config.containers["audiobookshelf"].model_dump
-    # print()
-    # print(container_config)
-    # # print(container_config.get("ntfy_priority", None))
-    # print([c for c in config.containers])
-    # print(config.global_keywords.keywords_with_attachment)
-    # print()
-    # print(list(config.global_keywords.keywords_with_attachment) + list(config.containers["audiobookshelf"].keywords))
-    # print(config.notifications.apprise.url.get_secret_value())
-    # for v in [key, value for key: value in config.containers["audiobookshelf"].items() if key not in ["keywords", "keywords_with_attachment"]]:
-    #     if v is not None:
-    #         print(v)
-#     print()
-# # GlobalConfig.containers["audiobookshelf"]
-#     for k, v in config.containers["audiobookshelf"].model_dump().items():
-#         if k not in ["keywords", "keywords_with_attachment"] and v is not None:
-#             print(k)
