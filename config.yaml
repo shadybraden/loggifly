@@ -1,20 +1,26 @@
 containers:
     vaultwarden:
-      ntfy_tags: closed_lock_with_key   # if you use ntfy you can set these settings per container to override global settings
+    # The next 5 settings override the global settings for this container.
+      ntfy_tags: closed_lock_with_key  
       ntfy_priority: 5
       ntfy_topic: security
+      attachment_lines: 20     
+      notification_cooldown: 10  
       keywords:
-        - regex: (username|password).*incorrect   # you can use regex expressions.
+        - regex: (username|password).*incorrect   # Use regex expressions when you need them
         - login
       keywords_with_attachment:                   # send a file with the last log lines. 
-        - regex: ^\[[^\]]+\]\[[^\]]+\]\[(ERROR)\] # catches all lines with Log level set to ERROR at the beginning of the line (after the timestamp)
+        - critical
+    audiobookshelf:
+      keywords:
+        - requested download
+        - failed login
 
-# if you don't need all the extra settings from ntfy or an attachment you can directly list your keywords
-    audiobookshelf:   
-      - failed login
-      - requested download
-      - downloaded item 
- 
+    # Just leave the them blank if global keywords are enough
+    nextcloud:
+    immich_server:
+
+
 global_keywords:
   keywords:
     - segfault
@@ -22,19 +28,23 @@ global_keywords:
   keywords_with_attachment:
     - fatal
 
-notifications:                       # Here you can specify your ntfy or apprise settings. Or both. 
-  ntfy:                              # You could also set these settings via environment variables.                                 
-    url: "your url"
-    topic: "your topic"
-    token: "token"
-    tags: kite, mag
+notifications:                       
+  # At least one of the two (Ntfy/Apprise) is required.
+  ntfy:
+    url: http://your-ntfy-server    # Required. The URL of your Ntfy instance
+    topic: loggifly.                # Required. the topic for Ntfy
+    token: ntfy-token               # In case you need authorization 
+    priority: 3                     # Ntfy priority (1-5)
+    tags: kite,mag                  # Ntfy tags/emojis 
   apprise:
-    url: discord://                  # Your apprise url. For example for Discord
+    url: "discord://webhook-url"    # Any Apprise-compatible URL (https://github.com/caronc/apprise/wiki)
   
-settings:                            # These are settings you could also set via environment variables
-  log-level: INFO                    # Set the log level (DEBUG, INFO, ERROR, FATAL)
-  keyword_notification_cooldown: 5   # Set the time the programm should wait before it sends you a notificatin from the same service and keyword
-  attachment_lines: 10               # Set the number of log lines in the log file attached to your notification 
-  disable_start_message: False       # Disable the message you get when the programm starts
-  disable_shutdown_message: False    # Disable the message you get when the programm shuts down
-  disable_restart: False             # Disable that the programm restarts when your config file changes
+settings:          
+  log_level: INFO               # DEBUG, INFO, WARNING, ERROR
+  notification_cooldown: 5      # Seconds between alerts for same keyword (per container)
+  attachment_lines: 20          # Number of Lines to include in log attachments
+  multi_line_entries: true      # Detect multi-line log entries
+  disable_restart: false        # Disable restart when a config change is detected 
+  disable_start_message: false  # Suppress startup notification
+  disable_shutdown_message: false  # Suppress shutdown notification
+  disable_restart_message: false   # Suppress config reload notification

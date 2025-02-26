@@ -1,7 +1,7 @@
 monitor.log
+experimenting/
 experimenting
 testing
-docker-compose.yaml
 app/config.yaml
 app/__pycache__
 .venv

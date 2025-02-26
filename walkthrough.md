@@ -1,99 +1,101 @@
 
-# Config Walkthr
+# Config Walkthrough
 
 ## 📁 Basic Structure
 
 The `config.yaml` file is divided into four main sections:
-1. **ntfy configuration**: set your ntfy url, topic, token, priority and tags
+
+1. **`settings`**: Global settings like cooldowns and log levels.
 2. **`containers`**: Define which containers to monitor and their specific keywords.
 3. **`global_keywords`**: Keywords that apply to **all** monitored containers.
-4. **`settings`**: Global settings like cooldowns and log levels.
+4. **`notifications`ˋ`**: Configue ntfy (url, topic, token, priority and tags) or your Apprise url
 
 ---
-
-## `ntfy` section
-
-In this section, you can configure your ntfy settings. The `url` and `token` are required parameters. The `tags`, `topic`, and `priority` have default values and can be defined globally in this section or individually for each container.
-
-```yaml
-ntfy:
-  url: "http://192.168.178.184:8080"   # URL of your ntfy instance
-  topic: "loggifly"                   # Default topic for notifications (overridden by container-specific topics)
-  token: "your_token"
-  tags: warning                       # Default tag (overridden by container-specific tags)
-  priority: 3 # Default valuw
-```
----
-
-## 🐳 `containers` Section
-
-This section defines the containers you want to monitor and the keywords/regex patterns to look for.
-You can also set the topic, tags and priority for your ntfy notification which will be used over the global configuration
-
-### Example:
-```yaml
-containers:
-  hrconvert2:
-    keywords_with_attachment:
-      - regex: "\\bhttp\\b"  # Case-insensitive regex for "HTTP"
-      - "error"              # Plain-text keyword
-  nextcloud-app-1:
-    keywords_with_attachment:
-      - regex: "\\b(unauthorized|permission denied)\\b"
-      - "disk full"
-```
-### Key Details:
-
-- Container Name: Use the exact name of the Docker container (e.g., hrconvert2).
-- keywords_with_attachment:
-  - A list of keywords or regex patterns to monitor.
-  - If a match is found, the last 50 lines of the log are attached to the notification.
-  - Use regex: for regex patterns (e.g., "\\bhttp\\b").
-  - Use plain strings for exact matches (e.g., "error").
-
- ---
- 
-## 🌍 `global_keywords` Section
-Keywords defined here apply to all containers being monitored.
-### Example:
-
-```yaml
-
-global_keywords:
-  - regex: "\\b(critical|panic)\\b"  # Match "critical" or "panic" in any container
-  - "out of memory"                  # Plain-text keyword
-```
-
-### Key Details:
-- Global Scope: These keywords are checked in all containers.
-- Same Syntax: Use regex: for patterns or plain strings for exact matches.
-
----
-
-## ⚙️ `settings` Section
-
-This section defines global behavior for Loggifly.
-
-### Example:
-
+###⚙️ `settings` section
 ```yaml
 settings:
-  keyword_notification_cooldown: 5  # Cooldown (in seconds) between notifications per keyword
-  log_level: "INFO"                 # Logging verbosity (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  log_level: INFO               # DEBUG, INFO, WARNING, ERROR
+  notification_cooldown: 5      # Seconds between alerts for same keyword (per container)
+  attachment_lines: 20          # Lines to include in log attachments
+  multi_line_entries: true      # Detect multi-line log entries
+  disable_start_message: false  # Suppress startup notification
+  disable_shutdown_message: false  # Suppress shutdown notification
+  disable_restart_message: false   # Suppress config reload notification
 ```
 
-### Key Details:
+###🐳 `containers` section
 
-- keyword_notification_cooldown:
-  - Prevents spam by limiting how often a notification is sent for the same keyword. Default: 5 seconds.
-- log_level:
-  - Set Log Level. Default: INFO
+```yaml
+containers:
+  exact-container-name:         # Must match docker ps/container_name
+    ntfy_tags: "tag1, tag2"     # Comma-separated (optional)
+    ntfy_priority: "4"          # 1-5 (optional)
+    keywords:                   # Simple text matches
+      - "error"
+      - "critical"
+```
+
+###📭 `notiications` section
+
+```yaml
+notifications:     # At least one of the two is required. Or use env variables.
+  ntfy:
+    url: "http://your-ntfy-server"  
+    topic: "logs"                   
+    token: "ntfy-token"          
+  apprise:
+    url: "discord://webhook-url"    # Any Apprise-compatible URL```
+```
+
+---
+
+ 
+### 🌍 `global_keywords` Section
+
+```yaml
+global_keywords:              # These keywords are being monitored for all containers
+  keywords:
+    - login failed
+  keywords_with_attachment:
+    - critical
+```
+
+---
+### 🔑 Key Features:
+
+#### Regex Patterns (YAML Only)
+
+```yaml
+containers:
+  my-container:
+    keywords:
+      - {regex: "\\b(?:3[0-1]|0?[0-9]|1[0-9]|2[0-9])\\d\\.log\\b"}  # Escape backslashes
+```
+
+#### Attach Logfile to notification
+You can add ˋkeywords_with_attachmentˋ to either a containers section or global keywords. The number of lines the log file can be customised (See ˋsettingsˋ)
+
+```yaml
+containers:
+  container-name:
+    keywords:
+      ...
+    keywords_with_attachment:   # attach log file to notification
+      - "database connection failed"
+      - "out of memory"
+global_keywords: 
+  keywords:
+  ...
+  keywords_with_attachment:
+    - critical
+`
+```
 
 ---
 
 ## Enviroment Variables
 
-These are the global settings you can set via docker environment variables in either your docker compose or .env file
+Except for container specific settings or regex patterns you can set most settings via docker environment variables in either your docker compose or .env file
 
 | Variables                         | Description                                              | Default  |
 |-----------------------------------|----------------------------------------------------------|----------|

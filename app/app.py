@@ -23,6 +23,7 @@ logging.basicConfig(
 logging.info("Loggifly started")
 
 shutdown_event = threading.Event()
+
 config = load_config()
 
 
@@ -51,9 +52,6 @@ def set_logging(config):
         ]
     )
     logging.info(f"Log-Level set to {log_level}")
-    # logging.debug("This is a Debug-Message")
-    # logging.info("This is an Info-Message")
-    # logging.warning("This is a Warning-Message")
 
 
 def restart_docker_container():
@@ -75,7 +73,7 @@ class ConfigHandler(FileSystemEventHandler): # Watch for changes in config.yaml.
 
 
 def detect_config_changes():
-    logging.debug("watching for config changes")
+    logging.debug("Watching for config changes")
     path = "/app/config.yaml"  
     event_handler = ConfigHandler()
     observer = Observer()
@@ -92,7 +90,9 @@ def detect_config_changes():
 
 
 def monitor_container_logs(config, client, container):
-
+    """
+    I am using a buffer in case the logstream has an unfinished log ling that can't be decoded correctly.
+    """
     now = datetime.now()
     processor = LogProcessor(config, container, shutdown_event, timeout=5)  
     buffer = b""
@@ -128,10 +128,11 @@ def monitor_container_logs(config, client, container):
 
     logging.info("Monitoring stopped for Container: %s", container.name)
 
+
 def main(config):
     """
     Creates Threads for each container to monitor their logs 
-    as well as monitoring docker events for new containers. 
+    Then docker events are being monitoring to look for new containers. 
     And a thread fot watching config changes.
     """
     threads = []
@@ -145,7 +146,7 @@ def main(config):
     containers_to_monitor = [c for c in containers if c.name in selected_containers]
     containers_to_monitor_str = "\n - ".join(c.name for c in containers_to_monitor)
     
-    logging.info(f"These containers are being monitored: {containers_to_monitor_str}")
+    logging.info(f"These containers are being monitored:\n - {containers_to_monitor_str}")
    
     unmonitored_containers = [c for c in selected_containers if c not in [c.name for c in containers_to_monitor]]
     if unmonitored_containers:

@@ -152,9 +152,10 @@ class LogProcessor:
             self.valid_pattern = False
         if self.line_count >= self.line_limit:
             if self.patterns == []:
-                logging.info(f"container: {self.container_name}: No pattern found in log. Mode: single-line after {self.line_limit} lines.")
+                logging.info(f"container: {self.container_name}: No pattern found in log. Mode: single-line after {self.line_limit} lines. Mode: single-line")
             else:   
-                logging.info(f"container: {self.container_name}: Found pattern(s) in log. Stopping the search now after {self.line_limit}] lines. Mode: multi-line.\nPatterns: {self.patterns}")
+                logging.info(f"container: {self.container_name}: Found pattern(s) in log. Stopping the search now after {self.line_limit}] lines. Mode: multi-line.")
+                logging.debug(f"container: {self.container_name}: Patterns found: {self.patterns}")
 
         self.waiting_for_pattern = False
 
