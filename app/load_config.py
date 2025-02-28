@@ -89,6 +89,9 @@ class GlobalKeywords(BaseModel):
     keywords: List[str] = []
     keywords_with_attachment: List[str] = []
 
+
+
+
 class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_default=True)
     
@@ -140,6 +143,26 @@ class GlobalConfig(BaseModel):
                     "keywords_with_attachment": []
                 }
         return values
+    
+    @model_validator(mode="after")
+    def check_at_least_one(self) -> "NotificationsConfig":
+        tmp_list = []
+        if not self.global_keywords.keywords and not self.global_keywords.keywords_with_attachment:
+            for k in self.containers:
+                tmp_list.extend(self.containers[k].keywords)
+        else:
+            return self
+        if not tmp_list:
+            print("HEY")
+            raise ValueError("No keywords configured. You have to set keywords either per container or globally.")
+        return self
+
+    @field_validator("containers")
+    def validate_priority(cls, v):
+        if isinstance(v, dict):
+            if not v:
+                raise ValueError(f"You have to configure at least one container")
+        return v
 
 
 def merge_yaml_and_env(yaml, env_update):

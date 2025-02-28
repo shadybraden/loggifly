@@ -16,10 +16,9 @@ containers:
         - requested download
         - failed login
 
-    # Just leave the them blank if global keywords are enough
+    # Just leave the container config blank if global keywords are enough
     nextcloud:
     immich_server:
-
 
 global_keywords:
   keywords:
