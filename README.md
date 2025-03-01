@@ -3,7 +3,7 @@
 <br />
 <div align="center">
   <a href="clemcer/loggifly">
-    <img src="/images/icon.png" alt="Logo" width="300" height="auto">
+    <img src="/images/icon.png" alt="Logo" width="200" height="auto">
   </a>
 
 <h1 align="center">LoggiFly</h1>
@@ -20,10 +20,18 @@
 **LoggiFly** - A Lightweight Tool to monitor Docker Logs and send Notifications. <br>
 Never miss critical container events again - Get instant alerts for security breaches, system errors, or custom patterns through your favorite notification channels. 🚀
 
+
+
 **Ideal For**:
 - ✅ Catching security breaches (e.g., failed logins in Vaultwarden)
 - ✅ Debugging crashes with attached log context
 - ✅ Monitoring custom app behaviors (e.g., when a user downloads an audiobook on your Audiobookshelf server)
+
+
+<div align="center">
+   <img src="/images/vault_failed_login.gif" alt="Failed Vaultwarden Login" width="auto" height="150">
+</div>
+
 ---
 
 ## Content
@@ -32,6 +40,8 @@ Never miss critical container events again - Get instant alerts for security bre
 - [Screenshots](#-screenshots)
 - [Quick Start](#️-quick-start)
 - [Configuration Deep Dive](#-Configuration-Deep-Dive)
+  - [Basic config structure](#-basic-structure)
+  - [Environment Variables](#-enviroment-variables)
 - [Tips](#-tips)
 
 ---
@@ -49,18 +59,23 @@ Never miss critical container events again - Get instant alerts for security bre
 
 <div align="center">
    <img src="/images/abs_login.png" alt="Audiobookshelf Login" width="300" height="auto">
-   <img src="/images/vaultwarden_login.png" alt="Vaultwarden Login" width="300" height="auto">
+   <img src="/images/vault_failed_login.png" alt="Vaultwarden Login" width="300" height="auto">
    <img src="/images/abs_download.png" alt="Audiobookshelf Download" width="300" height="auto">
-</div>
+  <img src="/images/ebook2audiobook.png" alt="Ebook2Audiobook conversion finished" width="300" height="auto">
 
+</div>
 
 ---
 
 ## ⚡️ Quick start
-You have two options. There is a simple way to run this with just docker environment variables and a more flexible way with a config.yaml file which lets you set different keywords and settings per container and use complex regex patterns.
+
+Choose your preferred setup method - simple environment variables for basic use, or a YAML config for advanced control.<br>
+With environment variables you can have LoggiFly up and running in a minute with just docker compose.<br>
+With YAML you can use complex Regex patterns and have different keywords & other settings per container. 
 
 
-<details><summary><em>Click to expand:</em> 🐋 <strong>1. Option: Docker Compose only</strong></summary>d.
+<details><summary><em>Click to expand:</em> 🐋 <strong>Basic Setup: Docker Compose (Environment Variables)</</strong></summary>
+Ideal for quick setup with minimal configuration
 
 ```yaml
 version: "3.8"
@@ -70,30 +85,31 @@ services:
     container_name: loggifly
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:  
-    # Configure either Ntfy or Apprise or both
-      NTFY_URL:
-      NTFY_TOPIC: 
-      NTFY_TOKEN:                            # In case you need authentication
-      APPRISE_URL:                           # Any Apprise-compatible URL (https://github.com/caronc/apprise/wiki)
-      CONTAINERS: vaultwarden,audiobookshelf # comma separated list
-      GLOBAL_KEYWORDS: login,error           # comma separated list
-      # When one of these keywords is found a log file will be attached to the notification
-      GLOBAL_KEYWORDS_WITH_ATTACHMENT: critical,warning 
+    environment:
+      # Choose at least one notification service
+      NTFY_URL: "https://ntfy.sh"       # or your self-hosted instance
+      NTFY_TOPIC: "your_topic"          # e.g., "docker_alerts"
+      APPRISE_URL: "discord://..."      # Apprise-compatible URL
+    
+      CONTAINERS: "vaultwarden,audiobookshelf"  # Comma-separated list
+      GLOBAL_KEYWORDS: "error,failed"           # Basic keyword monitoring
+      GLOBAL_KEYWORDS_WITH_ATTACHMENT: "critical" # Attaches a log file to the notification
 ```
 </details>
 
 
-<details><summary><em>Click to expand:</em><strong> 📃 2. Option: Set up a config.yaml for more fine-grained control</strong></summary><br>
+<details><summary><em>Click to expand:</em><strong> 📜 Advanced Setup: YAML Configuration</strong></summary>
+
+Recommended for granular control and regex patterns:
   
 1) Insert the following line in the volumes section of the docker compose from Option 1:
 ```yaml
-      - ./loggifly/config.yaml:/app/config.yaml # set the path of your config file on the left side of the mapping
+volumes:
+  - ./config.yaml:/app/config.yaml  # Path to your config file
 ```
-
 <br>
 
-2) Configure your config.yaml.
+2) Configure `config.yaml`.
 
 ```yaml
 # You have to configure at least one container.
@@ -117,9 +133,9 @@ global_keywords:
 notifications:     
   # Configure either Ntfy or Apprise or both
   ntfy:
-    url: "http://your-ntfy-server"  
-    topic: "loggifly"                   
-    token: "ntfy-token"          
+    url: http://your-ntfy-server  
+    topic: loggifly                   
+    token: ntfy-token               # In case you need authentication
   apprise:
     url: "discord://webhook-url"    # Any Apprise-compatible URL (https://github.com/caronc/apprise/wiki)```    
 ```
@@ -172,7 +188,7 @@ notifications:
   ntfy:
     url: http://your-ntfy-server    # Required. The URL of your Ntfy instance
     topic: loggifly.                # Required. the topic for Ntfy
-    token: ntfy-token               # In case you need authorization 
+    token: ntfy-token               # In case you need authentication 
     priority: 3                     # Ntfy priority (1-5)
     tags: kite,mag                  # Ntfy tags/emojis 
   apprise:
@@ -266,9 +282,9 @@ Except for container specific settings and regex patterns you can configure most
 3. **Troubleshooting Multi-Line Logs**. If multi-line entries aren't detected:
     - Wait for Patterns: LoggiFly needs a few lines to detect the pattern the log entries start with (e.g. timestamps/log formats)
     - Unrecognized Patterns: If issues persist, open an issue and share the affected log samples
-4. **Test Regex Patterns**: Validate patterns at [regex101.com](https://regex101.com) before adding them to config.
+4. **Test Regex Patterns**: Validate patterns at [regex101.com](https://regex101.com) before adding them to your config.
 Example for error detection:
-`regex: "\b(ERROR|CRITICAL)\b`
+`regex: \b(ERROR|CRITICAL)\b`
 ---
 
 ## License
