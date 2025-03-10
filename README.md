@@ -73,7 +73,7 @@ Choose your preferred setup method - simple environment variables for basic use,
 - With YAML you can use complex Regex patterns and have different keywords & other settings per container. 
 
 
-<details><summary><em>Click to expand:</em> 🐋 <strong>Basic Setup: Docker Compose (Environment Variables)</</strong></summary>
+<details><summary><em>Click to expand:</em> 🐋 <strong>Basic Setup: Docker Compose (Environment Variables)</strong></summary>
 Ideal for quick setup with minimal configuration
 
 ```yaml
@@ -161,10 +161,10 @@ The Quick Start only covered the essential settings, here is a more detailed wal
 
 The `config.yaml` file is divided into four main sections:
 
-1. `settings`: Global settings like cooldowns and log levels.
-2. `notifications`: Configure Ntfy (URL, Topic, Token, Priority and Tags) and/or your Apprise URL
-3. `containers`: Define which Containers to monitor and their specific Keywords (plus optional settings).
-4. `global_keywords`: Keywords that apply to **all** monitored Containers.
+1. **`settings`**: Global settings like cooldowns and log levels.
+2. **`notifications`**: Configure Ntfy (URL, Topic, Token, Priority and Tags) and/or your Apprise URL
+3. **`containers`**: Define which Containers to monitor and their specific Keywords (plus optional settings).
+4. **`global_keywords`**: Keywords that apply to **all** monitored Containers.
 
 <details><summary><em>Click to expand:</em><strong> ⚙️ Settings </strong></summary>
 
