@@ -1,16 +1,14 @@
 <a name="readme-top"></a>
 
-<br />
 <div align="center">
   <a href="clemcer/loggifly">
     <img src="/images/icon.png" alt="Logo" width="200" height="auto">
   </a>
-
+</div>
 <h1 align="center">LoggiFly</h1>
 
   <p align="center">
     <a href="https://github.com/clemcer/loggifly/issues">Report Bug</a>
-    ·
     <a href="https://github.com/clemcer/loggifly/issues">Request Feature</a>
   </p>
 
@@ -68,10 +66,12 @@ Never miss critical container events again - Get instant alerts for security bre
 
 ## ⚡️ Quick start
 
+
+In this quickstart only the most essential settigs are covered, [here](#-Configuration-Deep-Dive) is a more detailed config walkthrough.<br>
+
 Choose your preferred setup method - simple environment variables for basic use, or a YAML config for advanced control.
 - Environment variables allow for a simple setup and let you spin this thing up in a minute
 - With YAML you can use complex Regex patterns and have different keywords & other settings per container. 
-
 
 <details><summary><em>Click to expand:</em> 🐋 <strong>Basic Setup: Docker Compose (Environment Variables)</strong></summary>
 Ideal for quick setup with minimal configuration
@@ -84,32 +84,43 @@ services:
     container_name: loggifly
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+#      - ./config.yaml:/app/config.yaml  # Path to your config file (ignore if you are only using environment variables)
     environment:
       # Choose at least one notification service
       NTFY_URL: "https://ntfy.sh"       # or your self-hosted instance
       NTFY_TOPIC: "your_topic"          # e.g., "docker_alerts"
       APPRISE_URL: "discord://..."      # Apprise-compatible URL
     
-      CONTAINERS: "vaultwarden,audiobookshelf"  # Comma-separated list
-      GLOBAL_KEYWORDS: "error,failed"           # Basic keyword monitoring
-      GLOBAL_KEYWORDS_WITH_ATTACHMENT: "critical" # Attaches a log file to the notification
+      CONTAINERS: "vaultwarden,audiobookshelf"        # Comma-separated list
+      GLOBAL_KEYWORDS: "error,failed login,password"  # Basic keyword monitoring
+      GLOBAL_KEYWORDS_WITH_ATTACHMENT: "critical"     # Attaches a log file to the notification
+    restart: unless-stopped 
 ```
 </details>
 
 
 <details><summary><em>Click to expand:</em><strong> 📜 Advanced Setup: YAML Configuration</strong></summary>
 
-Recommended for granular control and regex patterns:
-  
-1) Insert the following line in the volumes section of the docker compose from Option 1:
+Recommended for granular control and regex patterns. <br>
+
+**Step 1: Update Docker Compose**
+
+Uncomment/add this line in your docker-compose.yml:
 ```yaml
 volumes:
-  - ./config.yaml:/app/config.yaml  # Path to your config file
+  - ./YOUR/CONFIG/FOLDER/config.yaml:/app/config.yaml  # 👈 Replace with your local path
 ```
-<br>
+**Step 2: Create Config File**
 
-2) Configure `config.yaml`.
+Create config.yaml in your chosen folder:
+```bash
+mkdir -p ./loggifly_config  # Example folder
+cd ./loggifly_config
+touch config.yaml           # Create empty file
+```
+**Step 3: Configure Your `config.yaml`**
 
+Add this minimal example config to the file you just created and edit it according to your needs.<br>(If you want more options take a look at the more detailed [config walkthrough](#-Configuration-Deep-Dive) or at this [example config](/config.yaml)):
 ```yaml
 # You have to configure at least one container.
 containers:
@@ -136,7 +147,7 @@ notifications:
     topic: loggifly                   
     token: ntfy-token               # In case you need authentication
   apprise:
-    url: "discord://webhook-url"    # Any Apprise-compatible URL (https://github.com/caronc/apprise/wiki)```    
+    url: "discord://webhook-url"    # Any Apprise-compatible URL (https://github.com/caronc/apprise/wiki)
 ```
 </details><br>
 
@@ -161,9 +172,9 @@ The Quick Start only covered the essential settings, here is a more detailed wal
 
 The `config.yaml` file is divided into four main sections:
 
-1. **`settings`**: Global settings like cooldowns and log levels.
-2. **`notifications`**: Configure Ntfy (URL, Topic, Token, Priority and Tags) and/or your Apprise URL
-3. **`containers`**: Define which Containers to monitor and their specific Keywords (plus optional settings).
+1. **`settings`**: Global settings like cooldowns and log levels. (_Optional since they all have default values_)
+2. **`notifications`**: Configure Ntfy (_URL, Topic, Token, Priority and Tags_) and/or your Apprise URL
+3. **`containers`**: Define which Containers to monitor and their specific Keywords (_plus optional settings_).
 4. **`global_keywords`**: Keywords that apply to **all** monitored Containers.
 
 <details><summary><em>Click to expand:</em><strong> ⚙️ Settings </strong></summary>
@@ -174,7 +185,7 @@ settings:
   log_level: INFO               # DEBUG, INFO, WARNING, ERROR
   notification_cooldown: 5      # Seconds between alerts for same keyword (per container)
   attachment_lines: 20          # Number of Lines to include in log attachments
-  multi_line_entries: true      # Monitor multi-line log entries instead of line by line. 
+  multi_line_entries: true      # Monitor and catch multi-line log entries instead of going line by line. 
   disable_restart: false        # Disable restart when a config change is detected 
   disable_start_message: false  # Suppress startup notification
   disable_shutdown_message: false  # Suppress shutdown notification
@@ -209,11 +220,11 @@ containers:
   container-name:               # Must match exact container_name
     # The next 5 settings are optional
     # They override the respective global setting for this container 
-    ntfy_topic: your_topic      # Overrides global ntfy topic for this contaner.
-    ntfy_tags: "tag1, tag2"     # Overrides global ntfy tags for this contaner.
-    ntfy_priority: 4            # Overrides global ntfy priority for this contaner. (1-5)
-    attachment_lines: 10        # overrides the global number of lines included in the attachments for this container
-    notification_cooldown: 10   # overrides the global cooldown per keyword for this container
+    ntfy_topic: your_topic
+    ntfy_tags: "tag1, tag2"     
+    ntfy_priority: 4            
+    attachment_lines: 10        
+    notification_cooldown: 10   
 
   # You don't have to use both `keywords` and `keyword_with_attachment`. One is enough. 
     keywords:                                 
@@ -264,7 +275,7 @@ Except for container specific settings and regex patterns you can configure most
 | `NTFY_TAGS`                     | Ntfy [Tags/Emojis](https://docs.ntfy.sh/emojis/) for ntfy notifications. | kite,mag  |
 | `NTFY_PRIORITY`                 | Notification [priority](https://docs.ntfy.sh/publish/?h=priori#message-priority) for ntfy messages.                 | 3 / default |
 | `APPRISE_URL`                   | Any [Apprise-compatible URL](https://github.com/caronc/apprise/wiki)  | _N/A_    |
-| `CONTAINERS`       | A comma separated list of containers to use with global keywords.<br>These are added to the containers from the config.| _N/A_     |
+| `CONTAINERS`       | A comma separated list of containers.<br>These are added to the containers from the config (if you are using one).| _N/A_     |
 | `GLOBAL_KEYWORDS`       | Keywords that will be monitored for all containers. Overrides `global_keywords.keywords` from the config.yaml.| _N/A_     |
 | `GLOBAL_KEYWORDS_WITH_ATTACHMENT`       | Notifications triggered by these global keywords have a logfile attached. Overrides `global_keywords.keywords_with_attachment` from the config.yaml.| _N/A_     |
 | `NOTIFICATION_COOLDOWN`         | Cooldown period (in seconds) per container per keyword<br> before a new message can be sent  | 5        |
@@ -286,12 +297,11 @@ Except for container specific settings and regex patterns you can configure most
 2. Ensure containers names **exactly match** your Docker **container names**. 
     - Find out your containers names: ```docker ps --format "{{.Names}}" ```
     - 💡 Pro Tip: Define the `container_name:` in your compose files. 
-3. **Troubleshooting Multi-Line Logs**. If multi-line entries aren't detected:
-    - Wait for Patterns: LoggiFly needs a few lines to detect the pattern the log entries start with (e.g. timestamps/log formats)
+3. **Test Regex Patterns**: Validate patterns at [regex101.com](https://regex101.com) before adding them to your config.
+4. **Troubleshooting Multi-Line Log Entries**. If LoggiFly only catches single lines from log entries that span over multiple lines:
+    - Wait for Patterns: LoggiFly needs to process a few lines in order to detect the pattern the log entries start with (e.g. timestamps/log formats)
     - Unrecognized Patterns: If issues persist, open an issue and share the affected log samples
-4. **Test Regex Patterns**: Validate patterns at [regex101.com](https://regex101.com) before adding them to your config.
-Example for error detection:
-`regex: \b(ERROR|CRITICAL)\b`
+
 ---
 
 ## License
