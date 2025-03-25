@@ -15,14 +15,53 @@ import yaml
 logging.getLogger(__name__)
 
 """ 
-THIS MAY LOOK UNNECESSARILY COMPLICATED BUT I WANTED TO LEARN AND USE PYDANTIC 
-I DIDN'T MANAGE TO USE PYDANTIC WITH ENVIRONMENT VARIABLES THE WAY I WANTED. 
-I NEEDED ENV TO OVERRIDE YAML DATA AND YAML TO OVERRIDE DEFAULT VALUES AND I COULD NOT GET IT TO WORK
-SO NOW I FIRST LOAD THE YAML AND THE ENVIRONMENT VARIABLES, MERGE THEM AND THEN I VALIDATE THE DATA WITH PYDANTIC
+this may look unnecessarily complicated but I wanted to learn and use pydantic 
+I didn't manage to use pydantic with environment variables the way I wanted. 
+I needed env to override yaml data and yaml to override default values and I could not get it to work 
+so now I first load the yaml and the environment variables, merge them and then I validate the data with pydantic
 """
-class NtfyConfig(BaseModel):
+
+class BaseConfigModel(BaseModel):
     model_config = ConfigDict(extra="ignore", validate_default=True)
 
+class KeywordBase(BaseModel):
+    keywords: List[Union[str, Dict[str, str]]] = []
+    keywords_with_attachment: List[Union[str, Dict[str, str]]] = []
+
+    @model_validator(mode="before")
+    def int_to_string(cls, values):
+        for field in ["keywords", "keywords_with_attachment"]:
+            if isinstance(values.get(field), list):
+                values[field] = [str(kw) for kw in values[field]]
+        return values
+
+class ContainerConfig(BaseConfigModel, KeywordBase):
+    ntfy_tags: Optional[str] = Field(default=None, validate_default=False) 
+    ntfy_topic: Optional[str] = None
+    ntfy_priority: Optional[int] = None
+    attachment_lines: Optional[int] = None
+    notification_cooldown: Optional[int] = None
+
+    @field_validator("ntfy_priority")
+    def validate_priority(cls, v):
+        if isinstance(v, str):
+            try:
+                v = int(v)
+            except ValueError:
+                pass
+        if isinstance(v, int):
+            if not 1 <= int(v) <= 5:
+                raise ValueError("Priority must be between 1-5")
+        if isinstance(v, str):
+            options = ["max", "urgent", "high", "default", "low", "min"]
+            if v not in options:
+                raise ValueError(f"Priority must be one of {options}")
+        return v
+    
+class GlobalKeywords(BaseConfigModel, KeywordBase):
+    pass
+
+class NtfyConfig(BaseConfigModel):
     url: str = Field(..., description="Ntfy server URL")
     topic: str = Field(..., description="Ntfy topic name")
     token: Optional[SecretStr] = Field(default=None, description="Optional access token")
@@ -45,11 +84,10 @@ class NtfyConfig(BaseModel):
                 raise ValueError(f"Priority must be one of {options} or a number between 1-5")
         return v
 
-class AppriseConfig(BaseModel):  
-    model_config = ConfigDict(extra="ignore", validate_default=True)
+class AppriseConfig(BaseConfigModel):  
     url: SecretStr = Field(..., description="Apprise compatible URL")
 
-class NotificationsConfig(BaseModel):
+class NotificationsConfig(BaseConfigModel):
     ntfy: Optional[NtfyConfig] = Field(default=None, validate_default=False)
     apprise: Optional[AppriseConfig] = Field(default=None, validate_default=False)
 
@@ -59,42 +97,7 @@ class NotificationsConfig(BaseModel):
             raise ValueError("At least on of these two Apprise / Ntfy has to be configured.")
         return self
 
-class ContainerConfig(BaseModel):
-    model_config = ConfigDict(extra="ignore", validate_default=True)
-
-    ntfy_tags: Optional[str] = Field(default=None, validate_default=False) 
-    ntfy_topic: Optional[str] = None
-    ntfy_priority: Optional[int] = None
-    attachment_lines: Optional[int] = None
-    notification_cooldown: Optional[int] = None
-    keywords: List[Union[str, Dict[str, str]]] = []
-    keywords_with_attachment: List[str] = []
-
-    @field_validator("ntfy_priority")
-    def validate_priority(cls, v):
-        if isinstance(v, str):
-            try:
-                v = int(v)
-            except ValueError:
-                pass
-        if isinstance(v, int):
-            if not 1 <= int(v) <= 5:
-                raise ValueError("Priority must be between 1-5")
-        if isinstance(v, str):
-            options = ["max", "urgent", "high", "default", "low", "min"]
-            if v not in options:
-                raise ValueError(f"Priority must be one of {options}")
-        return v
-class GlobalKeywords(BaseModel):
-    keywords: List[str] = []
-    keywords_with_attachment: List[str] = []
-
-
-
-
-class Settings(BaseModel):
-    model_config = ConfigDict(extra="ignore", validate_default=True)
-    
+class Settings(BaseConfigModel):    
     log_level: str = Field("INFO", description="Logging level (DEBUG, INFO, WARNING, ERROR)")
     notification_cooldown: int = Field(5, description="Cooldown in seconds for repeated alerts")
     attachment_lines: int = Field(20, description="Number of log lines to include in attachments")
@@ -104,11 +107,7 @@ class Settings(BaseModel):
     disable_restart_message: bool = Field(False, description="Disable config reload notification")
     disable_restart: bool = Field(False, description="Disable restart on config change")
 
-class GlobalConfig(BaseModel):
-    model_config = ConfigDict(
-        extra="ignore",
-        validate_default=True
-    )
+class GlobalConfig(BaseConfigModel):
     containers: Dict[str, ContainerConfig]
     global_keywords: GlobalKeywords
     notifications: NotificationsConfig
@@ -117,7 +116,7 @@ class GlobalConfig(BaseModel):
     @model_validator(mode="before")
     def transform_legacy_format(cls, values):
     
-        # Convert legacy global_keywords format
+        # Convert list global_keywords format into dict
         if isinstance(values.get("global_keywords"), list):
             values["global_keywords"] = {
                 "keywords": values["global_keywords"],
@@ -130,7 +129,7 @@ class GlobalConfig(BaseModel):
                 name: {} for name in values["containers"]
             }
 
-         # Convert legacy keywords format per container
+         # Convert list keywords format per container into dict
         for container in values.get("containers"):
             if isinstance(values.get("containers").get(container), list):
                 values["containers"][container] = {
@@ -145,7 +144,7 @@ class GlobalConfig(BaseModel):
         return values
     
     @model_validator(mode="after")
-    def check_at_least_one(self) -> "NotificationsConfig":
+    def check_at_least_one(self) -> "GlobalConfig":
         tmp_list = []
         if not self.global_keywords.keywords and not self.global_keywords.keywords_with_attachment:
             for k in self.containers:
@@ -153,7 +152,6 @@ class GlobalConfig(BaseModel):
         else:
             return self
         if not tmp_list:
-            print("HEY")
             raise ValueError("No keywords configured. You have to set keywords either per container or globally.")
         return self
 
