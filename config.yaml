@@ -11,16 +11,15 @@ containers:
       ntfy_topic: security
       attachment_lines: 50     
       notification_cooldown: 2  
-      
       keywords:
         - login
         - regex: (username|password).*incorrect   # Use regex expressions when you need them
       keywords_with_attachment:                    
         - critical
-    
-    # Just leave the containers blank if global keywords are enough
-    nextcloud:
-    immich_server:
+
+    # If you have configured global_keywords and don't need container specific settings you can define the container name and leave the rest blank
+    another-container-name:
+
 
 global_keywords:
   keywords:

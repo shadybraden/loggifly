@@ -238,8 +238,7 @@ containers:
     keywords_with_attachment:
       - critical
 
-# If you have configured global_keywords and don't need container specific settings
-# you can define the container name and leave the rest blank
+# If you have configured global_keywords and don't need container specific settings you can define the container name and leave the rest blank
   another-container-name:
 ```
 
