@@ -1,4 +1,5 @@
 import requests
+import base64
 import logging
 import urllib.parse
 import apprise
@@ -60,6 +61,10 @@ def send_ntfy_notification(config, container_name, message, keyword=None, file_n
     }
     if config.notifications.ntfy.token:
         headers["Authorization"] = f"Bearer {config.notifications.ntfy.token.get_secret_value()}"
+    elif config.notifications.ntfy.username and config.notifications.ntfy.password:
+        credentials = f"{config.notifications.ntfy.username}:{config.notifications.ntfy.password.get_secret_value()}"
+        encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
+        headers["Authorization"] = f"Basic {encoded_credentials}"
 
     if keyword is None:
         headers["Title"] = f"{container_name}"

@@ -33,7 +33,9 @@ notifications:
   ntfy:
     url: http://your-ntfy-server    # Required. The URL of your Ntfy instance
     topic: loggifly                 # Required. the topic for Ntfy
-    token: ntfy-token               # In case you need authentication 
+    token: ntfy-token               # Ntfy token in case you need authentication 
+    username: john                  # Ntfy Username+Password in case you need authentication 
+    password: 1234                  # Ntfy Username+Password in case you need authentication 
     priority: 3                     # Ntfy priority (1-5)
     tags: kite,mag                  # Ntfy tags/emojis 
   apprise:

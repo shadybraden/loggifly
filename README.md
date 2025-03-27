@@ -87,6 +87,10 @@ services:
       # Choose at least one notification service
       NTFY_URL: "https://ntfy.sh"       # or your self-hosted instance
       NTFY_TOPIC: "your_topic"          # e.g., "docker_alerts"
+      # Token or Username+Password In case you need authentication
+      # NTFY_TOKEN:
+      # NTFY_USERNAME:
+      # NTFY_PASSWORD:
       APPRISE_URL: "discord://..."      # Apprise-compatible URL
     
       CONTAINERS: "vaultwarden,audiobookshelf"        # Comma-separated list
@@ -143,7 +147,9 @@ notifications:
   ntfy:
     url: http://your-ntfy-server  
     topic: loggifly                   
-    token: ntfy-token               # In case you need authentication
+    token: ntfy-token               # Ntfy token in case you need authentication 
+    username: john                  # Ntfy Username+Password in case you need authentication 
+    password: 1234                  # Ntfy Username+Password in case you need authentication 
   apprise:
     url: "discord://webhook-url"    # Any Apprise-compatible URL (https://github.com/caronc/apprise/wiki)
 ```
@@ -202,7 +208,9 @@ notifications:
   ntfy:
     url: http://your-ntfy-server    # Required. The URL of your Ntfy instance
     topic: loggifly.                # Required. the topic for Ntfy
-    token: ntfy-token               # In case you need authentication 
+    token: ntfy-token               # Ntfy token in case you need authentication 
+    username: john                  # Ntfy Username+Password in case you need authentication 
+    password: 1234                  # Ntfy Username+Password in case you need authentication 
     priority: 3                     # Ntfy priority (1-5)
     tags: kite,mag                  # Ntfy tags/emojis 
   apprise:
@@ -264,9 +272,11 @@ Except for container specific settings and regex patterns you can configure most
 
 | Variables                         | Description                                              | Default  |
 |-----------------------------------|----------------------------------------------------------|----------|
-| `NTFY_URL`                      | URL of your Ntfy server instance                    | _N/A_    |
+| `NTFY_URL`                      | URL of your Ntfy server instance                           | _N/A_    |
 | `NTFY_TOKEN`                    | Authentication token for Ntfy in case you need authentication.      | _N/A_    |
-| `NTFY_TOPIC`                    | Notification topic for Ntfy.                             | _N/A_  |
+| `NTFY_USERNAME`                 | Ntfy Username in case you need authentication.             | _N/A_    |
+| `NTFY_PASSWORD`                 | Ntfy password in case you need authentication.             | _N/A_    |
+| `NTFY_TOPIC`                    | Notification topic for Ntfy.                               | _N/A_  |
 | `NTFY_TAGS`                     | Ntfy [Tags/Emojis](https://docs.ntfy.sh/emojis/) for ntfy notifications. | kite,mag  |
 | `NTFY_PRIORITY`                 | Notification [priority](https://docs.ntfy.sh/publish/?h=priori#message-priority) for ntfy messages.                 | 3 / default |
 | `APPRISE_URL`                   | Any [Apprise-compatible URL](https://github.com/caronc/apprise/wiki)  | _N/A_    |

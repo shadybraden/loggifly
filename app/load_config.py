@@ -65,6 +65,8 @@ class NtfyConfig(BaseConfigModel):
     url: str = Field(..., description="Ntfy server URL")
     topic: str = Field(..., description="Ntfy topic name")
     token: Optional[SecretStr] = Field(default=None, description="Optional access token")
+    username: Optional[str] = Field(default=None, description="Optional username")
+    password: Optional[SecretStr] = Field(default=None, description="Optional password")
     priority: Optional[Union[str, int]] = Field(default=3, description="Message priority 1-5")
     tags: Optional[str] = Field("kite,mag", description="Comma-separated tags")
 
@@ -207,6 +209,8 @@ def load_config(path="/app/config.yaml"):
         "token": os.getenv("NTFY_TOKEN"),
         "priority": os.getenv("NTFY_PRIORITY"),
         "tags": os.getenv("NTFY_TAGS"),
+        "username": os.getenv("NTFY_USERNAME"),
+        "password": os.getenv("NTFY_PASSWORD")
         }
     apprise_values = {
         "url": os.getenv("APPRISE_URL")
