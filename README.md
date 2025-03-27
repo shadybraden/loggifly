@@ -14,10 +14,8 @@
 
 <br>
 
-**LoggiFly** - A Lightweight Tool to monitor Docker Logs and send Notifications. <br>
+**LoggiFly** - A Lightweight Tool that monitors Docker Container Logs for predefined keywords 🔑 or regex patterns 🔍 and sends Notifications.<br>
 Never miss critical container events again - Get instant alerts for security breaches, system errors, or custom patterns through your favorite notification channels. 🚀
-
-
 
 **Ideal For**:
 - ✅ Catching security breaches (e.g., failed logins in Vaultwarden)
@@ -108,17 +106,17 @@ Recommended for granular control and regex patterns. <br>
 Uncomment/add this line in your docker-compose.yml:
 ```yaml
 volumes:
-  - ./YOUR/CONFIG/FOLDER/config.yaml:/app/config.yaml  # 👈 Replace with your local path
+  - ./YOUR/CONFIG/FOLDER/config.yaml:/app/config.yaml  # 👈 Replace left side of the mapping with your local path
 ```
 **Step 2: Create Config File**
 
-Create config.yaml in your chosen folder:
+Create the config.yaml in your chosen folder:
 ```bash
 mkdir -p ./loggifly_config  # Example folder
 cd ./loggifly_config
 touch config.yaml           # Create empty file
 ```
-**Step 3: Configure Your `config.yaml`**
+**Step 3: Configure Your config.yaml**
 
 Add this minimal example config to the file you just created and edit it according to your needs.<br>(If you want more options take a look at the more detailed [config walkthrough](#-Configuration-Deep-Dive) or at this [example config](/config.yaml)):
 ```yaml
@@ -165,17 +163,17 @@ docker compose up -d
 ## 🤿 Configuration Deep Dive
 
 
-The Quick Start only covered the essential settings, here is a more detailed walktrough of the configuration options.
+The Quick Start only covered the essential settings, here is a more detailed walktrough of all the configuration options.
 
 
 ### 📁 Basic Structure
 
-The `config.yaml` file is divided into four main sections:
+The **`config.yaml`** file is divided into four main sections:
 
 1. **`settings`**: Global settings like cooldowns and log levels. (_Optional since they all have default values_)
 2. **`notifications`**: Configure Ntfy (_URL, Topic, Token, Priority and Tags_) and/or your Apprise URL
 3. **`containers`**: Define which Containers to monitor and their specific Keywords (_plus optional settings_).
-4. **`global_keywords`**: Keywords that apply to **all** monitored Containers.
+4. **`global_keywords`**: Keywords that apply to _all_ monitored Containers.
 
 <details><summary><em>Click to expand:</em><strong> ⚙️ Settings </strong></summary>
 
@@ -217,15 +215,13 @@ notifications:
 
 ```yaml
 containers:
-  container-name:               # Must match exact container_name
-    # The next 5 settings are optional
-    # They override the respective global setting for this container 
+  container-name:     # Must match exact container_name
+    # The next 5 settings are optional. They override the respective global setting for this container 
     ntfy_topic: your_topic
     ntfy_tags: "tag1, tag2"     
     ntfy_priority: 4            
     attachment_lines: 10        
     notification_cooldown: 10   
-
   # You don't have to use both `keywords` and `keyword_with_attachment`. One is enough. 
     keywords:                                 
       - error                                  # Simple text matches
@@ -235,8 +231,8 @@ containers:
       - critical
 
 # If you have configured global_keywords and don't need container specific settings
-# you can leave the container config blank.
-  another-containers-name:
+# you can define the container name and leave the rest blank
+  another-container-name:
 ```
 
  </details>
@@ -250,8 +246,7 @@ containers:
 global_keywords:              
   keywords:
     - error
-  # When one of these keywords is found a logfile is attached
-  keywords_with_attachment:
+  keywords_with_attachment:  # When one of these keywords is found a logfile is attached
     - regex: (critical|error)
 ```
 
@@ -275,14 +270,14 @@ Except for container specific settings and regex patterns you can configure most
 | `NTFY_TAGS`                     | Ntfy [Tags/Emojis](https://docs.ntfy.sh/emojis/) for ntfy notifications. | kite,mag  |
 | `NTFY_PRIORITY`                 | Notification [priority](https://docs.ntfy.sh/publish/?h=priori#message-priority) for ntfy messages.                 | 3 / default |
 | `APPRISE_URL`                   | Any [Apprise-compatible URL](https://github.com/caronc/apprise/wiki)  | _N/A_    |
-| `CONTAINERS`       | A comma separated list of containers.<br>These are added to the containers from the config (if you are using one).| _N/A_     |
+| `CONTAINERS`                    | A comma separated list of containers. These are added to the containers from the config.yaml (if you are using one).| _N/A_     |
 | `GLOBAL_KEYWORDS`       | Keywords that will be monitored for all containers. Overrides `global_keywords.keywords` from the config.yaml.| _N/A_     |
-| `GLOBAL_KEYWORDS_WITH_ATTACHMENT`       | Notifications triggered by these global keywords have a logfile attached. Overrides `global_keywords.keywords_with_attachment` from the config.yaml.| _N/A_     |
-| `NOTIFICATION_COOLDOWN`         | Cooldown period (in seconds) per container per keyword<br> before a new message can be sent  | 5        |
+| `GLOBAL_KEYWORDS_WITH_ATTACHMENT`| Notifications triggered by these global keywords have a logfile attached. Overrides `global_keywords.keywords_with_attachment` from the config.yaml.| _N/A_     |
+| `NOTIFICATION_COOLDOWN`         | Cooldown period (in seconds) per container per keyword before a new message can be sent  | 5        |
 | `LOG_LEVEL`                     | Log Level for LoggiFly container logs.                    | INFO     |
-| `MULTI_LINE_ENTRIES`            | When enabled the program tries to catch entries that span multiple log lines.<br>If you encounter bugs or you simply don't need it you can disable it.| True     |
+| `MULTI_LINE_ENTRIES`            | When enabled the program tries to catch log entries that span multiple log lines.<br>If you encounter bugs or you simply don't need it you can disable it.| True     |
 | `ATTACHMENT_LINES`              | Define the number of Log Lines in the attachment file     | 20     |
-| `DISABLE_RESTART`               | Disable automatic restarts when the config file is changed.| False     |
+| `DISABLE_RESTART`               | Disable automatic restarts when the config file is changed.| False  |
 | `DISBLE_START_MESSAGE`          | Disable startup message.                                  | False     |
 | `DISBLE_SHUTDOWN_MESSAGE`       | Disable shutdown message.                                 | False     |
 | `DISABLE_RESTART_MESSAGE`       | Disable message on config change when program restarts.| False     |
