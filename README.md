@@ -72,7 +72,7 @@ Regex patterns don't work at the moment but will be fixed soon!
 ## ⚡️ Quick start
 
 
-In this quickstart only the most essential settigs are covered, [here](#-Configuration-Deep-Dive) is a more detailed config walkthrough.<br>
+In this quickstart only the most essential settings are covered, [here](#-Configuration-Deep-Dive) is a more detailed config walkthrough.<br>
 
 Choose your preferred setup method - simple environment variables for basic use, or a YAML config for advanced control.
 - Environment variables allow for a simple setup and let you spin this thing up in a minute
