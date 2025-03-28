@@ -87,7 +87,6 @@ services:
       # Choose at least one notification service
       NTFY_URL: "https://ntfy.sh"       # or your self-hosted instance
       NTFY_TOPIC: "your_topic"          # e.g., "docker_alerts"
-      NTFY_PRIORITY: 3
       # Token or Username+Password In case you need authentication
       # NTFY_TOKEN:
       # NTFY_USERNAME:
