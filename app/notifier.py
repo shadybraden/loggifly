@@ -5,16 +5,12 @@ import urllib.parse
 import apprise
 from load_config import GlobalConfig
 
-
-
 logging.getLogger(__name__)
 
 def send_apprise_notification(url, container_name, message, title, file_name=None):
     apobj = apprise.Apprise()
-
     apobj.add(url)
     message = ("This message had to be shortened: \n" if len(message) > 1900 else "") + message[:1900]
-
     try: 
         if file_name is None:
             apobj.notify(
@@ -33,9 +29,6 @@ def send_apprise_notification(url, container_name, message, title, file_name=Non
 
 
 def send_ntfy_notification(config, container_name, message, title, file_name=None):
-    """
-    Sendet eine Benachrichtigung an den ntfy-Server.
-    """
     ntfy_url = config.notifications.ntfy.url
     
     if container_name in [c for c in config.containers]:
@@ -46,10 +39,7 @@ def send_ntfy_notification(config, container_name, message, title, file_name=Non
         ntfy_topic = config.notifications.ntfy.topic
         ntfy_tags = config.notifications.ntfy.tags
         ntfy_priority = config.notifications.ntfy.priority
-
     message = ("This message had to be shortened: \n" if len(message) > 3900 else "") + message[:3900]
-
-
     headers = {
         "Title": title,
         "Tags": f"{ntfy_tags}",
@@ -62,9 +52,7 @@ def send_ntfy_notification(config, container_name, message, title, file_name=Non
         credentials = f"{config.notifications.ntfy.username}:{config.notifications.ntfy.password.get_secret_value()}"
         encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
         headers["Authorization"] = f"Basic {encoded_credentials}"
-
     message_text = f"{message}"
-    
     try:
         if file_name:
             logging.debug("Message WITH file is being sent")
@@ -97,7 +85,6 @@ def send_ntfy_notification(config, container_name, message, title, file_name=Non
         logging.error("Error while trying to connect to ntfy: %s", e)
 
 
-
 def send_notification(config: GlobalConfig, container_name, message, keyword_list=[], file_name=None):
     if len(keyword_list) > 2:
         joined_keywords = ', '.join(f"'{word}'" for word in keyword_list)
@@ -106,10 +93,9 @@ def send_notification(config: GlobalConfig, container_name, message, keyword_lis
         joined_keywords = ' and '.join(f"'{word}'" for word in keyword_list)
         title = f"{joined_keywords} found in {container_name}"
     elif len(keyword_list) == 1:
-        title = f"{keyword_list[0]} found in {container_name}"
+        title = f"'{keyword_list[0]}' found in {container_name}"
     else:
         title = f"{container_name}"
-
     if (config.notifications and config.notifications.ntfy and config.notifications.ntfy.url and config.notifications.ntfy.topic):
         send_ntfy_notification(config, container_name, message, title, file_name)
     if (config.notifications and config.notifications.apprise and config.notifications.apprise.url):
