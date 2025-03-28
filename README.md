@@ -43,7 +43,7 @@ Regex patterns don't work at the moment but will be fixed soon!
 - [Quick Start](#️-quick-start)
 - [Configuration Deep Dive](#-Configuration-Deep-Dive)
   - [Basic config structure](#-basic-structure)
-  - [Environment Variables](#-enviroment-variables)
+  - [Environment Variables](#-environment-variables)
 - [Tips](#-tips)
 
 ---
@@ -269,11 +269,11 @@ global_keywords:
 [Here](/config.yaml) you can find a full example config.
 
 
-### 🍀 Enviroment Variables
+### 🍀 Environment Variables
 
 Except for container specific settings and regex patterns you can configure most settings via docker environment variables.
 
-<details><summary><em>Click to expand:</em><strong> Enviroment Variables </strong></summary><br>
+<details><summary><em>Click to expand:</em><strong> Environment Variables </strong></summary><br>
 
 
 | Variables                         | Description                                              | Default  |
