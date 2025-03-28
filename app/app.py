@@ -124,7 +124,8 @@ def monitor_container_logs(config, client, container):
         # Füge hier zusätzliches Logging hinzu
         logging.error("Error details: %s", str(e.__class__.__name__))
         logging.debug(traceback.format_exc())
-
+    finally:
+        log_stream.close()
 
     logging.info("Monitoring stopped for Container: %s", container.name)
 

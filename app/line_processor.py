@@ -214,6 +214,8 @@ class LogProcessor:
 
     # Here the line is searchd for simple keywords or regex patterns
     def _search_and_send(self, log_line):
+        keywords_with_attachemt_found = []
+        keywords_found = []
         for keyword in self.container_keywords + self.container_keywords_with_file:
             if isinstance(keyword, dict) and keyword.get("regex") is not None:
                 regex_keyword = keyword["regex"]
@@ -222,9 +224,9 @@ class LogProcessor:
                         formatted_log_entry = ' | ' + '\n | '.join(log_line.splitlines())
                         if keyword in self.container_keywords_with_file:
                             logging.info(f"Regex-Keyword (with attachment) '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}\n   -----------------------")
-                            self._send_message(log_line, regex_keyword, send_attachment=True)
+                            keywords_with_attachemt_found.append(regex_keyword)
                         else:
-                            self._send_message(log_line, regex_keyword, send_attachment=False)         
+                            keywords_found.append(regex_keyword)     
                             logging.info(f"Regex-Keyword '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry} \n   -----------------------")
                         self.time_per_keyword[regex_keyword] = time.time()
 
@@ -233,12 +235,15 @@ class LogProcessor:
                 if time.time() - self.time_per_keyword.get(keyword) >= int(self.notification_cooldown):
                     if keyword in self.container_keywords_with_file:
                         logging.info(f"Keyword (with attachment) '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}\n   -----------------------")
-                        self._send_message(log_line, keyword, send_attachment=True)
+                        keywords_with_attachemt_found.append(keyword)
                     else:
-                        self._send_message(log_line, keyword, send_attachment=False)
+                        keywords_found.append(keyword)
                         logging.info(f"Keyword '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}\n   -----------------------")
-
                     self.time_per_keyword[keyword] = time.time()
+        if keywords_with_attachemt_found:
+            self._send_message(log_line, keywords_with_attachemt_found + keywords_found, send_attachment=True)
+        elif keywords_found:
+            self._send_message(log_line, keywords_with_attachemt_found + keywords_found, send_attachment=False)
 
     def _log_attachment(self):  
         file_name = f"last_{self.lines_number_attachment}_lines_from_{self.container_name}.log"
@@ -247,17 +252,17 @@ class LogProcessor:
             file.write(log_tail)
             return file_name
 
-    def _send_message(self, message, keyword, send_attachment=False):
+    def _send_message(self, message, keyword_list, send_attachment=False):
         if send_attachment:
             file_name = self._log_attachment()
-            send_notification(self.config, self.container_name, message, keyword, file_name)     
+            send_notification(self.config, self.container_name, message, keyword_list, file_name)     
             if os.path.exists(file_name):
                 os.remove(file_name)
                 logging.debug(f"Die Datei {file_name} wurde gelöscht.")
             else:
                 logging.debug(f"Die Datei {file_name} existiert nicht.") 
         else:
-            send_notification(self.config, self.container_name, message, keyword)
+            send_notification(self.config, self.container_name, message, keyword_list)
 
 
 
