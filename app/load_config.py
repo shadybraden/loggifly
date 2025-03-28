@@ -31,8 +31,15 @@ class KeywordBase(BaseModel):
     @model_validator(mode="before")
     def int_to_string(cls, values):
         for field in ["keywords", "keywords_with_attachment"]:
-            if isinstance(values.get(field), list):
-                values[field] = [str(kw) for kw in values[field]]
+            if field in values and isinstance(values[field], list):
+                converted = []
+                for kw in values[field]:
+                    # Nur konvertieren, wenn es KEIN String/Dict ist
+                    if isinstance(kw, (str, dict)):
+                        converted.append(kw)
+                    else:
+                        converted.append(str(kw))
+                values[field] = converted
         return values
 
 class ContainerConfig(BaseConfigModel, KeywordBase):

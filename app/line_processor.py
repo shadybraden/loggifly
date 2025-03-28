@@ -167,7 +167,7 @@ class LogProcessor:
                     self._handle_and_clear_buffer()
 
     # This is the only function that gets called from outside this class by the monitor_container_logs function in app.py
-    # If the user disabled it or if there are not patterns detected (yet) the programm switches to single-line mode
+    # If the user disables it or if there are no patterns detected (yet) the programm switches to single-line mode
     # In single-line mode the line gets processed and searched for keywords instantly instead of going into the buffer first
     def process_line(self, line):
         clean_line = re.sub(r"\x1b\[[0-9;]*m", "", line)
@@ -214,36 +214,52 @@ class LogProcessor:
 
     # Here the line is searchd for simple keywords or regex patterns
     def _search_and_send(self, log_line):
-        keywords_with_attachemt_found = []
+        keywords_with_attachment_found = [] 
         keywords_found = []
-        for keyword in self.container_keywords + self.container_keywords_with_file:
+
+        def search_regex(log_line, regex_keyword):
+            if re.search(regex_keyword, log_line, re.IGNORECASE):
+                formatted_log_entry = ' | ' + '\n | '.join(log_line.splitlines())   
+                logging.info(f"Regex-Keyword '{regex_keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry} \n   -----------------------")
+                self.time_per_keyword[regex_keyword] = time.time()
+                return f"regex: {regex_keyword}"
+
+        def search_keyword(log_line, keyword):
+            if str(keyword).lower() in log_line.lower():
+                formatted_log_entry = ' | ' + '\n | '.join(log_line.splitlines())
+                logging.info(f"Keyword '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}\n   -----------------------")
+                self.time_per_keyword[keyword] = time.time()
+                return keyword
+
+        for keyword in self.container_keywords:
+            keyword_found = None
+            if isinstance(keyword, dict) and keyword.get("regex") is not None:  
+                regex_keyword = keyword["regex"]
+                if time.time() - self.time_per_keyword.get(regex_keyword) >= int(self.notification_cooldown) or int(self.notification_cooldown) == 0:
+                    keyword_found = search_regex(log_line, regex_keyword)
+            else: 
+                if time.time() - self.time_per_keyword.get(keyword) >= int(self.notification_cooldown) or int(self.notification_cooldown) == 0:
+                    keyword_found = search_keyword(log_line, keyword)
+            if keyword_found:
+                keywords_found.append(keyword_found)
+            
+        for keyword in self.container_keywords_with_file:
+            keyword_with_attachment_found = None
             if isinstance(keyword, dict) and keyword.get("regex") is not None:
                 regex_keyword = keyword["regex"]
-                if time.time() - self.time_per_keyword.get(regex_keyword) >= int(self.notification_cooldown):
-                    if re.search(regex_keyword, log_line, re.IGNORECASE):
-                        formatted_log_entry = ' | ' + '\n | '.join(log_line.splitlines())
-                        if keyword in self.container_keywords_with_file:
-                            logging.info(f"Regex-Keyword (with attachment) '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}\n   -----------------------")
-                            keywords_with_attachemt_found.append(regex_keyword)
-                        else:
-                            keywords_found.append(regex_keyword)     
-                            logging.info(f"Regex-Keyword '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry} \n   -----------------------")
-                        self.time_per_keyword[regex_keyword] = time.time()
+                if time.time() - self.time_per_keyword.get(regex_keyword) >= int(self.notification_cooldown) or int(self.notification_cooldown) == 0:
+                    keyword_with_attachment_found = search_regex(log_line, regex_keyword)
+            else:
+                if time.time() - self.time_per_keyword.get(keyword) >= int(self.notification_cooldown) or int(self.notification_cooldown) == 0:
+                    keyword_with_attachment_found = search_keyword(log_line, keyword)
+            if keyword_with_attachment_found:
+                keywords_with_attachment_found.append(keyword_with_attachment_found)
 
-            elif str(keyword).lower() in log_line.lower():
-                formatted_log_entry = ' | ' + '\n | '.join(log_line.splitlines())
-                if time.time() - self.time_per_keyword.get(keyword) >= int(self.notification_cooldown):
-                    if keyword in self.container_keywords_with_file:
-                        logging.info(f"Keyword (with attachment) '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}\n   -----------------------")
-                        keywords_with_attachemt_found.append(keyword)
-                    else:
-                        keywords_found.append(keyword)
-                        logging.info(f"Keyword '{keyword}' was found in {self.container_name}:\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}\n   -----------------------")
-                    self.time_per_keyword[keyword] = time.time()
-        if keywords_with_attachemt_found:
-            self._send_message(log_line, keywords_with_attachemt_found + keywords_found, send_attachment=True)
+        if keywords_with_attachment_found:
+            self._send_message(log_line, keywords_with_attachment_found + keywords_found, send_attachment=True)
         elif keywords_found:
-            self._send_message(log_line, keywords_with_attachemt_found + keywords_found, send_attachment=False)
+            self._send_message(log_line, keywords_with_attachment_found + keywords_found, send_attachment=False)
+
 
     def _log_attachment(self):  
         file_name = f"last_{self.lines_number_attachment}_lines_from_{self.container_name}.log"
