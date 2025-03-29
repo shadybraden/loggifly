@@ -19,13 +19,9 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-
 logging.info("Loggifly started")
-
 shutdown_event = threading.Event()
-
 config = load_config()
-
 
 def create_handle_signal(config):
     def handle_signal(signum, frame):
@@ -91,7 +87,7 @@ def detect_config_changes():
 
 def monitor_container_logs(config, client, container):
     """
-    I am using a buffer in case the logstream has an unfinished log ling that can't be decoded correctly.
+    I am using a buffer in case the logstream has an unfinished log line that can't be decoded correctly.
     """
     now = datetime.now()
     processor = LogProcessor(config, container, shutdown_event, timeout=5)  
@@ -99,13 +95,11 @@ def monitor_container_logs(config, client, container):
     try:
         log_stream = container.logs(stream=True, follow=True, since=now)
         logging.info("Monitoring for Container started: %s", container.name)
-
         for chunk in log_stream:
             if shutdown_event.is_set():
                 logging.debug(f"Noticed that shutdown_event.is_set in monitor_container_logs() function for {container.name}. Closing client now")
                 client.close()
                 break
-
             buffer += chunk
             while b'\n' in buffer:
                 line, buffer = buffer.split(b'\n', 1)
@@ -121,12 +115,10 @@ def monitor_container_logs(config, client, container):
         logging.error("Docker API-Errorer for Container %s: %s", container.name, e)
     except Exception as e:
         logging.error("Error while trying to monitor %s: %s", container.name, e)
-        # Füge hier zusätzliches Logging hinzu
         logging.error("Error details: %s", str(e.__class__.__name__))
         logging.debug(traceback.format_exc())
     finally:
         log_stream.close()
-
     logging.info("Monitoring stopped for Container: %s", container.name)
 
 
@@ -134,21 +126,17 @@ def main(config):
     """
     Creates Threads for each container to monitor their logs 
     Then docker events are being monitoring to look for new containers. 
-    And a thread fot watching config changes.
+    And a thread watching config changes is started.
     """
     threads = []
-
     client = docker.from_env()
     selected_containers = [ ]
     for container in config.containers:
         selected_containers.append(container)
     containers = client.containers.list()
-
     containers_to_monitor = [c for c in containers if c.name in selected_containers]
     containers_to_monitor_str = "\n - ".join(c.name for c in containers_to_monitor)
-    
     logging.info(f"These containers are being monitored:\n - {containers_to_monitor_str}")
-   
     unmonitored_containers = [c for c in selected_containers if c not in [c.name for c in containers_to_monitor]]
     if unmonitored_containers:
         unmonitored_containers_str = "\n - ".join(unmonitored_containers)
@@ -163,15 +151,11 @@ def main(config):
         thread = threading.Thread(target=monitor_container_logs, args=(config, client, container), daemon=True)
         threads.append(thread)
         thread.start()
-
-
     if config.settings.disable_restart is False:
         thread_file_change = threading.Thread(target=detect_config_changes)
         threads.append(thread_file_change)
         thread_file_change.start()
-
     logging.info("Monitoring started for all selected containers. Monitoring docker events now to watch for new containers")
-
     for event in client.events(decode=True, filters={"event": "start"}):
         if shutdown_event.is_set():
             logging.debug(f"Noticed that shutdown_event.is_set in monitor_docker_logs() function. Closing client now")
@@ -185,13 +169,10 @@ def main(config):
             thread.start()
             logging.info("Monitoring new container: %s", container_from_event.name)
             send_notification(config, "Loggifly", f"Monitoring new container: {container_from_event.name}")
-
     for thread in threads:
         thread.join()
 
 if __name__ == "__main__":
     set_logging(config)
-    # logging.info(f"CONFIG:\n{config.model_dump_json(indent=2, exclude_unset=True)}")
-    # logging.info(f"CONFIG:\n{config.model_dump_json(indent=2, exclude_none=True)}")
     main(config)
     
