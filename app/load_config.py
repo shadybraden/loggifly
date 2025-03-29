@@ -74,8 +74,8 @@ class NtfyConfig(BaseConfigModel):
     token: Optional[SecretStr] = Field(default=None, description="Optional access token")
     username: Optional[str] = Field(default=None, description="Optional username")
     password: Optional[SecretStr] = Field(default=None, description="Optional password")
-    priority: Union[str, int] = Field(default=3, description="Message priority 1-5")
-    tags: str = Field("kite,mag", description="Comma-separated tags")
+    priority: Optional[Union[str, int]] = Field(default=3, description="Message priority 1-5")
+    tags: Optional[str] = Field("kite,mag", description="Comma-separated tags")
 
     @field_validator("priority")
     def validate_priority(cls, v):
@@ -174,16 +174,17 @@ class GlobalConfig(BaseConfigModel):
 
 def merge_yaml_and_env(yaml, env_update):
     for key, value in env_update.items():
-        if isinstance(value, dict) and key in yaml:
+        if isinstance(value, dict) and key in yaml and key != {}:
             merge_yaml_and_env(yaml[key],value)
         else:
-            if value is not None:
+            if value is not None :
                 yaml[key] = value
     return yaml
 
 
 def load_config(path="/app/config.yaml"):
-    yaml_config = { "notifications": {"ntfy": {}}, "settings": {}, "global_keywords": {}, "containers": {}}
+    required_keys = ["containers", "notifications", "settings", "global_keywords"]
+    yaml_config = {}
     if os.path.isfile(path):
         try:
             with open(path, "r") as file:
@@ -196,6 +197,8 @@ def load_config(path="/app/config.yaml"):
     else:
         logging.warning("config.yaml not found. Only using environment variables.")
         no_config_file = True
+    for key in required_keys:
+        yaml_config.setdefault(key, {})
     """
     -------------------------LOAD ENVIRONMENT VARIABLES---------------------
     """
@@ -222,8 +225,6 @@ def load_config(path="/app/config.yaml"):
     apprise_values = {
         "url": os.getenv("APPRISE_URL")
     }
-
-
     global_keywords_values = {
         "keywords": [kw.strip() for kw in os.getenv("GLOBAL_KEYWORDS", "").split(",") if kw.strip()] if os.getenv("GLOBAL_KEYWORDS") else [],
         "keywords_with_attachment": [kw.strip() for kw in os.getenv("GLOBAL_KEYWORDS_WITH_ATTACHMENT", "").split(",") if kw.strip()] if os.getenv("GLOBAL_KEYWORDS_WITH_ATTACHMENT") else [],
@@ -233,9 +234,13 @@ def load_config(path="/app/config.yaml"):
             c = c.strip()
             env_config["containers"][c] = {}
     if any(ntfy_values.values()):
+        env_config["notifications"] = {}
         env_config["notifications"]["ntfy"] = ntfy_values
+        yaml_config["notifications"]["ntfy"] = {}
     if apprise_values["url"]: 
+        env_config["notifications"] = {}
         env_config["notifications"]["apprise"] = apprise_values
+        yaml_config["notifications"]["apprise"] = {}
     for k, v in global_keywords_values.items():
         if v:
             env_config["global_keywords"][k]= v
@@ -243,9 +248,12 @@ def load_config(path="/app/config.yaml"):
         if value is not None:
             env_config["settings"][key] = value
 
+    print(f" YAML: {yaml_config}")
+    print(f"ENV: {env_config}")
+
     merged_config = merge_yaml_and_env(yaml_config, env_config)
+    print(f"MERGED: {merged_config}")
     config = GlobalConfig.model_validate(merged_config)
     logging.info(f"\n ------------- CONFIG ------------- \n{config.model_dump_json(indent=2, exclude_none=True)}\n ----------------------------------")
-
     return config
 
