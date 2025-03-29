@@ -247,12 +247,7 @@ def load_config(path="/app/config.yaml"):
     for key, value in settings_values.items(): 
         if value is not None:
             env_config["settings"][key] = value
-
-    print(f" YAML: {yaml_config}")
-    print(f"ENV: {env_config}")
-
     merged_config = merge_yaml_and_env(yaml_config, env_config)
-    print(f"MERGED: {merged_config}")
     config = GlobalConfig.model_validate(merged_config)
     logging.info(f"\n ------------- CONFIG ------------- \n{config.model_dump_json(indent=2, exclude_none=True)}\n ----------------------------------")
     return config
