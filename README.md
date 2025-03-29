@@ -14,8 +14,9 @@
 
 <br>
 
-**LoggiFly** - A Lightweight Tool that monitors Docker Container Logs for predefined keywords 🔑 or regex patterns 🔍 and sends Notifications.<br>
-Never miss critical container events again - Get instant alerts for security breaches, system errors, or custom patterns through your favorite notification channels. 🚀
+**LoggiFly** - A Lightweight Tool that monitors Docker Container Logs for predefined keywords or regex patterns and sends Notifications.
+
+Get instant alerts for security breaches, system errors, or custom patterns through your favorite notification channels. 🚀
 
 
 **Ideal For**:
