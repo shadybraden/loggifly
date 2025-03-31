@@ -197,6 +197,8 @@ def load_config(path="/app/config.yaml"):
     else:
         logging.warning("config.yaml not found. Only using environment variables.")
         no_config_file = True
+    if yaml_config is None:
+        yaml_config = {}
     for key in required_keys:
         yaml_config.setdefault(key, {})
     """
