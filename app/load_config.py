@@ -27,10 +27,11 @@ class BaseConfigModel(BaseModel):
 class KeywordBase(BaseModel):
     keywords: List[Union[str, Dict[str, str]]] = []
     keywords_with_attachment: List[Union[str, Dict[str, str]]] = []
+    restart_keywords: List[Union[str, Dict[str, str]]] = []
 
     @model_validator(mode="before")
     def int_to_string(cls, values):
-        for field in ["keywords", "keywords_with_attachment"]:
+        for field in ["keywords", "keywords_with_attachment", "restart_keywords"]:
             if field in values and isinstance(values[field], list):
                 converted = []
                 for kw in values[field]:
@@ -43,11 +44,12 @@ class KeywordBase(BaseModel):
         return values
 
 class ContainerConfig(BaseConfigModel, KeywordBase):
-    ntfy_tags: Optional[str] = Field(default=None, validate_default=False) 
+    ntfy_tags: Optional[str] = None
     ntfy_topic: Optional[str] = None
     ntfy_priority: Optional[int] = None
     attachment_lines: Optional[int] = None
     notification_cooldown: Optional[int] = None
+    restart_cooldown: int = Field(300, description="Cooldown in seconds for until container can restart again")
 
     @field_validator("ntfy_priority")
     def validate_priority(cls, v):
@@ -114,7 +116,7 @@ class Settings(BaseConfigModel):
     disable_start_message: bool = Field(False, description="Disable startup notification")
     disable_shutdown_message: bool = Field(False, description="Disable shutdown notification")
     disable_restart_message: bool = Field(False, description="Disable config reload notification")
-    disable_restart: bool = Field(False, description="Disable restart on config change")
+    reload_config: bool = Field(True, description="Disable restart on config change")
 
 class GlobalConfig(BaseConfigModel):
     containers: Dict[str, ContainerConfig]
@@ -210,7 +212,7 @@ def load_config(path="/app/config.yaml"):
         "attachment_lines": os.getenv("ATTACHMENT_LINES"),
         "multi_line_entries": os.getenv("MULTI_LINE_ENTRIES"),
         "notification_cooldown": os.getenv("NOTIFICATION_COOLDOWN"),
-        "disable_restart": no_config_file if no_config_file is True else os.getenv("DISABLE_RESTART"),
+        "reload_config": False if no_config_file is True else os.getenv("DISABLE_RESTART"),
         "disable_start_message": os.getenv("DISABLE_START_MESSAGE"),
         "disable_restart_message": os.getenv("DISABLE_RESTART_MESSAGE"),
         "disable_shutdown_message": os.getenv("DISABLE_SHUTDOWN_MESSAGE")

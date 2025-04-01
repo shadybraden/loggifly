@@ -69,20 +69,29 @@ class LogProcessor:
     COMPILED_STRICT_PATTERNS = [re.compile(pattern, re.ASCII) for pattern in STRICT_PATTERNS]
     COMPILED_FLEX_PATTERNS = [re.compile(pattern, re.ASCII) for pattern in FLEX_PATTERNS]
 
-    def __init__(self, config: GlobalConfig, container, shutdown_event, restart_event, timeout=1):
+    def __init__(self, config: GlobalConfig, close_stream_connecion, container, shutdown_event, restart_event, timeout=1):
+        self.close_stream_connecion = close_stream_connecion
         self.shutdown_event = shutdown_event
         self.restart_event = restart_event
         self.config = config
         self.container = container
         self.container_name = container.name
+
         self.container_keywords = config.global_keywords.keywords.copy()
         self.container_keywords.extend(keyword for keyword in config.containers[self.container_name].keywords if keyword not in self.container_keywords)
         self.container_keywords_with_file = config.global_keywords.keywords_with_attachment.copy()
         self.container_keywords_with_file.extend(keyword for keyword in config.containers[self.container_name].keywords_with_attachment if keyword not in self.container_keywords_with_file)
+        self.container_keywords_restart = [keyword for keyword in config.containers[self.container_name].restart_keywords if keyword not in self.container_keywords]
+
         self.lines_number_attachment = config.containers[self.container_name].attachment_lines or config.settings.attachment_lines
         self.multi_line_config = config.settings.multi_line_entries
         self.notification_cooldown = config.containers[self.container_name].notification_cooldown or config.settings.notification_cooldown
-        self.time_per_keyword = {}   
+        self.time_per_keyword = {}  
+        self.restart_cooldown = config.containers[self.container_name].restart_cooldown 
+        self.last_restart_time = time.time()
+        self.restart_event = threading.Event()
+
+        self.lock_file_name = Lock()
         for keyword in self.container_keywords + self.container_keywords_with_file:
             if isinstance(keyword, dict) and keyword.get("regex") is not None:
                 self.time_per_keyword[keyword["regex"]] = 0
@@ -98,8 +107,11 @@ class LogProcessor:
             time.sleep(2)
             self.line_count = 0
             self.line_limit = 300
-            log_tail = self.container.logs(tail=100).decode("utf-8")
-            self._find_pattern(log_tail)
+            try:
+                log_tail = self.container.logs(tail=100).decode("utf-8")
+                self._find_pattern(log_tail)
+            except Exception as e:
+                logging.error(f"Could not read logs of Container {self.container_name}: {e}")
             # self.refresh_pattern_thread = Thread(target=self._refresh_pattern)
             # self.refresh_pattern_thread.daemon = True
             # self.refresh_pattern_thread.start()
@@ -124,6 +136,22 @@ class LogProcessor:
     #             logging.info(f"container: {self.container_name}: Pattern refreshed. No pattern found. Mode: single-line.")
     #         logging.debug(f"container: {self.container_name}: Waiting 5 minutes to check again for patterns.")
     #     logging.info(f"container: {self.container_name}: Stopping pattern-refreshing. No pattern found in log after 60 minutes. Mode: single-line.")
+
+
+    def _restart_container(self):
+      #  self.restart_event.set()
+        try:
+            logging.info(f"Restarting Container: {self.container.name}.")
+            container = self.container
+            self.close_stream_connecion(container.name)
+            container.stop()
+            time.sleep(3)
+            container.start()
+            #container.start()
+            logging.info(f"Container {self.container.name} has been restarted")
+        except Exception as e:
+            logging.error(f"Failed to restart container {self.container.name}: {e}")
+        
 
     def _find_pattern(self, line_s):
         self.waiting_for_pattern = True
@@ -162,7 +190,7 @@ class LogProcessor:
     # Every second the buffer which consists of log lines that are not new entries is flushed because there won't be a log entry that produces lines over one second
     def _check_flush(self):
         while True:
-            if self.restart_event.is_set() or self.shutdown_event.is_set():
+            if self.shutdown_event.is_set(): #self.restart_event.is_set() or
                 logging.debug(f"container: {self.container_name}: Stopping.")
                 break
             with self.lock_buffer:
@@ -252,40 +280,66 @@ class LogProcessor:
                 if time.time() - self.time_per_keyword.get(keyword) >= int(self.notification_cooldown) or int(self.notification_cooldown) == 0:
                     keyword_with_attachment_found = search_keyword(log_line, keyword)
             if keyword_with_attachment_found:
-                keywords_with_attachment_found.append(keyword_with_attachment_found)
+                keywords_with_attachment_found.append(keyword_with_attachment_found)      
 
-        formatted_log_entry = ' | ' + '\n | '.join(log_line.splitlines())
+        formatted_log_entry ="\n  -----  LOG-ENTRY  -----\n" + ' | ' + '\n | '.join(log_line.splitlines()) + "\n   -----------------------"
         if keywords_with_attachment_found:
             self._send_message(log_line, keywords_with_attachment_found + keywords_found, send_attachment=True)
-            logging.info(f"The following keywords were found in {self.container_name}: {keywords_found + keywords_with_attachment_found}. (A Logfile will be attached)\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}\n   -----------------------" 
+            logging.info(f"The following keywords were found in {self.container_name}: {keywords_found + keywords_with_attachment_found}. (A Logfile will be attached){formatted_log_entry}" 
                         if len(keywords_found + keywords_with_attachment_found) > 1 
-                        else f"The Keyword '{keywords_found[0]}' was found in {self.container_name}.\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}\n   -----------------------"
+                        else f"The Keyword '{keywords_found[0]}' was found in {self.container_name}{formatted_log_entry}"
                         )
-
         elif keywords_found:
             self._send_message(log_line, keywords_found, send_attachment=False)
-            logging.info(f"The following keywords were found in {self.container_name}: {keywords_found}\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}\n   -----------------------" 
+            logging.info(f"The following keywords were found in {self.container_name}: {keywords_found}{formatted_log_entry}"
                          if len(keywords_found + keywords_with_attachment_found) > 1 
-                         else f"The Keyword '{keywords_found[0]}' was found in {self.container_name}.\n  -----  LOG-ENTRY  -----\n{formatted_log_entry}\n   -----------------------"
+                         else f"The Keyword '{keywords_found[0]}' was found in {self.container_name}{formatted_log_entry}"
                          )
-
+        if time.time() - self.last_restart_time >= max(int(self.restart_cooldown), 60):
+            for keyword in self.container_keywords_restart:
+               # logging.debug(f"Searching for {keyword}")
+                keyword_found = None
+                if isinstance(keyword, dict) and keyword.get("regex") is not None:  
+                    regex_keyword = keyword["regex"]
+                    keyword_found = search_regex(log_line, regex_keyword)
+                else: 
+                    keyword_found = search_keyword(log_line, keyword)
+                if keyword_found:
+                    logging.debug(f"Cooldown: {self.restart_cooldown}, last restart time: {self.last_restart_time}")
+                    logging.info(f"Restarting {self.container_name} because Keyword: {keyword_found} was found in {formatted_log_entry}")
+                    self._send_message(log_line, keyword_found, send_attachment=False, restart=True)
+                    self._restart_container()
+                    self.last_restart_time = time.time()
+                    break
+                
 
     def _log_attachment(self):  
-        file_name = f"last_{self.lines_number_attachment}_lines_from_{self.container_name}.log"
-        log_tail = self.container.logs(tail=self.lines_number_attachment).decode("utf-8")
-        with open(file_name, "w") as file:  
-            file.write(log_tail)
-            return file_name
+        with self.lock_file_name:
+            try:
+                file_name = f"last_{self.lines_number_attachment}_lines_from_{self.container_name}.log"
+                log_tail = self.container.logs(tail=self.lines_number_attachment).decode("utf-8")
+                with open(file_name, "w") as file:  
+                    file.write(log_tail)
+                    return file_name
+            except Exception as e:
+                logging.error(f"Could not read logs of Container {self.container_name}: {e}")
+                return None
 
-    def _send_message(self, message, keyword_list, send_attachment=False):
+    def _send_message(self, message, keyword_list, send_attachment=False, restart= False):
+        if restart:
+            message = f"Restarting {self.container_name} because the keyword '{keyword_list[0]}' was found in {message}"
+            send_notification(self.config, self.container_name, message, keyword_list)
+            return
         if send_attachment:
-            file_name = self._log_attachment()
-            send_notification(self.config, self.container_name, message, keyword_list, file_name)     
-            if os.path.exists(file_name):
-                os.remove(file_name)
-                logging.debug(f"Die Datei {file_name} wurde gelöscht.")
-            else:
-                logging.debug(f"Die Datei {file_name} existiert nicht.") 
+            with self.lock_file_name:
+                file_name = self._log_attachment()
+                if file_name and isinstance(file_name, str) and os.path.exists(file_name):
+                    send_notification(self.config, self.container_name, message, keyword_list, file_name)     
+                    if os.path.exists(file_name):
+                        os.remove(file_name)
+                        logging.debug(f"The file {file_name} was deleted.")
+                    else:
+                        logging.debug(f"The file {file_name} does not exist.") 
         else:
             send_notification(self.config, self.container_name, message, keyword_list)
 
