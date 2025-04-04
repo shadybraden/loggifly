@@ -141,8 +141,7 @@ containers:
     # Caution advised! These keywords will trigger a restart/stop of the container
     action_keywords:
       - stop: traceback
-      - restart:
-          regex: critical.*failed
+      - restart: critical
 
 # Optional. These keywords are being monitored for all configured containers. There is an action_cooldown (see config deep dive)
 global_keywords:
