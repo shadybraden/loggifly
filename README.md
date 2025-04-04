@@ -196,6 +196,7 @@ The **`config.yaml`** file is divided into four main sections:
 settings:          
   log_level: INFO               # DEBUG, INFO, WARNING, ERROR
   notification_cooldown: 5      # Seconds between alerts for same keyword (per container)
+  action_cooldown: 300          # Cooldown period (in seconds) before the next container action can be performed. Maximum is always at least 60s.
   attachment_lines: 20          # Number of Lines to include in log attachments
   multi_line_entries: True      # Monitor and catch multi-line log entries instead of going line by line. 
   reload_config: True        # When the config file is changed the program reloads the config
@@ -316,7 +317,7 @@ Except for `restart_keywords`, container specific settings and regex patterns yo
 1. Ensure containers names **exactly match** your Docker **container names**. 
     - Find out your containers names: ```docker ps --format "{{.Names}}" ```
     - 💡 Pro Tip: Define the `container_name:` in your compose files.
-2. **`action_keywords`** can not be set globally and only in the config.yaml. `action_cooldown` is only set per container (defaults to 300s)
+2. **`action_keywords`** can not be set globally and only in the config.yaml. `action_cooldown` is always at least 60s and defaults to 300s
 3. **Test Regex Patterns**: Validate patterns at [regex101.com](https://regex101.com) before adding them to your config.
 4. When using a **Docker Socket Proxy** the log stream connection drops every ~10 minutes for whatever reason. LoggiFly simply resets the connection. This works but using a proxy is not officially recommended yet until I am sure everything works flawlessly. If you notice any bugs let me know!
 5. **Troubleshooting Multi-Line Log Entries**. If LoggiFly only catches single lines from log entries that span over multiple lines:
