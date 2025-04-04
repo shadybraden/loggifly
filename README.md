@@ -141,7 +141,8 @@ containers:
     # Caution advised! These keywords will trigger a restart/stop of the container
     action_keywords:
       - stop: traceback
-      - restart: {regex: critical.*failed}
+      - restart:
+          regex: critical.*failed
 
 # Optional. These keywords are being monitored for all configured containers. There is an action_cooldown (see config deep dive)
 global_keywords:
@@ -251,7 +252,8 @@ containers:
     # action_keywords and action_cooldown can only be set per container
     action_keywords:    # restart & stop are the only supported actions and have to be specified before every keyword
       - stop: traceback
-      - restart: {regex: critical.*failed} # looks weird but this is how to set regex patterns for action_keywords
+      - restart:
+          regex: critical.*failed # this is how to set regex patterns for action_keywords
     action_cooldown: 300 # 300s is the default time that has to pass until the next action can be triggered (minimum value is always 60)
 
 # If you have configured global_keywords and don't need container specific settings you can define the container name and leave the rest blank
