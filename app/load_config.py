@@ -5,7 +5,8 @@ from pydantic import (
     field_validator,
     model_validator,
     ConfigDict,
-    SecretStr    
+    SecretStr,
+    ValidationError   
 )
 from typing import Dict, List, Optional, Union
 import os
@@ -27,29 +28,71 @@ class BaseConfigModel(BaseModel):
 class KeywordBase(BaseModel):
     keywords: List[Union[str, Dict[str, str]]] = []
     keywords_with_attachment: List[Union[str, Dict[str, str]]] = []
-    restart_keywords: List[Union[str, Dict[str, str]]] = []
 
     @model_validator(mode="before")
     def int_to_string(cls, values):
-        for field in ["keywords", "keywords_with_attachment", "restart_keywords"]:
+        for field in ["keywords", "keywords_with_attachment"]:
             if field in values and isinstance(values[field], list):
                 converted = []
                 for kw in values[field]:
-                    # Nur konvertieren, wenn es KEIN String/Dict ist
-                    if isinstance(kw, (str, dict)):
-                        converted.append(kw)
+                    if isinstance(kw, dict):
+                        keys = list(kw.keys())
+                        if len(keys) == 1 and keys[0] == "regex":
+                            if isinstance(kw["regex"], (str, int)):
+                                converted.append({keys[0]: str(kw["regex"])})
+                        else:
+                            logging.warning(f"Ignoring Error in config for {field}: '{kw}'. Only 'regex' is allowed as a key.")
+                            continue
                     else:
-                        converted.append(str(kw))
+                        try:
+                            converted.append(str(kw))
+                        except ValueError:
+                            continue
                 values[field] = converted
         return values
+    
+class ActionKeywords(BaseModel):
+    action_keywords: List[Union[str, Dict[str, Union[str, Dict[str, str]]]]] = []
 
-class ContainerConfig(BaseConfigModel, KeywordBase):
+    @field_validator("action_keywords", mode="before")
+    def convert_int_to_str(cls, value):
+        allowed_keys = {"restart", "stop"}
+        converted = []
+        for item in value:
+            if isinstance(item, dict):
+                for key, val in item.items():
+                    if key not in allowed_keys:
+                        logging.warning(f"Ignoring Error in config for action_keywords: Key not allowed for restart_keywords. Wrong Input: '{key}: {val}'. Allowed Keys: {allowed_keys}.")
+                        continue  
+                    # convert Integer zu String
+                    if isinstance(val, int):
+                        converted.append({key: str(val)})
+                    elif isinstance(val, dict):
+                        if "regex" in val:
+                            # Convert regex-value, if Integer
+                            regex_val = val["regex"]
+                            if isinstance(regex_val, (int, str)):
+                                val["regex"] = str(regex_val)
+                            else:
+                                logging.warning(f"Ignoring Error in config for action_keywords: Wrong Input: '{key}: {val}' regex keyword is not a valid value.")
+                                continue
+                            converted.append({key: val})
+                        else:
+                            logging.warning(f"Ignoring Error in config for action_keywords: Wrong Input: '{key}: {val}'. If you put a dictionary after 'restart'/'stop' only 'regex' is allowed as a key.") 
+                    else:
+                        converted.append({key: val})
+            else:
+                logging.warning(f"Ignoring Error in config for action_keywords: Wrong Input: '{item}'. You have to set a dictionary with 'restart' or 'stop' as key.")
+        return converted
+    
+
+class ContainerConfig(BaseConfigModel, KeywordBase, ActionKeywords):    
     ntfy_tags: Optional[str] = None
     ntfy_topic: Optional[str] = None
     ntfy_priority: Optional[int] = None
     attachment_lines: Optional[int] = None
     notification_cooldown: Optional[int] = None
-    restart_cooldown: int = Field(300, description="Cooldown in seconds for until container can restart again")
+    action_cooldown: Optional[int] = None
 
     @field_validator("ntfy_priority")
     def validate_priority(cls, v):
@@ -60,11 +103,13 @@ class ContainerConfig(BaseConfigModel, KeywordBase):
                 pass
         if isinstance(v, int):
             if not 1 <= int(v) <= 5:
-                raise ValueError("Priority must be between 1-5")
+                logging.warning(f"Error in config for ntfy_priority. Must be between 1-5, '{v}' is not allowed. Using default: '3'")
+                return 3
         if isinstance(v, str):
             options = ["max", "urgent", "high", "default", "low", "min"]
             if v not in options:
-                raise ValueError(f"Priority must be one of {options}")
+                logging.warning(f"Error in config for ntfy_priority:'{v}'. Only 'max', 'urgent', 'high', 'default', 'low', 'min' are allowed. Using default: '3'")
+                return 3
         return v
     
 class GlobalKeywords(BaseConfigModel, KeywordBase):
@@ -76,10 +121,10 @@ class NtfyConfig(BaseConfigModel):
     token: Optional[SecretStr] = Field(default=None, description="Optional access token")
     username: Optional[str] = Field(default=None, description="Optional username")
     password: Optional[SecretStr] = Field(default=None, description="Optional password")
-    priority: Optional[Union[str, int]] = Field(default=3, description="Message priority 1-5")
+    priority: Union[str, int] = 3 # Field(default=3, description="Message priority 1-5")
     tags: Optional[str] = Field("kite,mag", description="Comma-separated tags")
 
-    @field_validator("priority")
+    @field_validator("priority", mode="before")
     def validate_priority(cls, v):
         if isinstance(v, str):
             try:
@@ -88,11 +133,13 @@ class NtfyConfig(BaseConfigModel):
                 pass
         if isinstance(v, int):
             if not 1 <= int(v) <= 5:
-                raise ValueError("Priority must be between 1-5")
+                logging.warning(f"Error in config for ntfy.priority. Must be between 1-5, '{v}' is not allowed. Using default: '3'")
+                return 3
         if isinstance(v, str):
             options = ["max", "urgent", "high", "default", "low", "min"]
             if v not in options:
-                raise ValueError(f"Priority must be one of {options} or a number between 1-5")
+                logging.warning(f"Error in config for ntfy.priority:'{v}'. Only 'max', 'urgent', 'high', 'default', 'low', 'min' are allowed. Using default: '3'")
+                return 3
         return v
 
 class AppriseConfig(BaseConfigModel):  
@@ -111,11 +158,12 @@ class NotificationsConfig(BaseConfigModel):
 class Settings(BaseConfigModel):    
     log_level: str = Field("INFO", description="Logging level (DEBUG, INFO, WARNING, ERROR)")
     notification_cooldown: int = Field(5, description="Cooldown in seconds for repeated alerts")
+    action_cooldown: Optional[int] = Field(300)
     attachment_lines: int = Field(20, description="Number of log lines to include in attachments")
     multi_line_entries: bool = Field(True, description="Enable multi-line log detection")
     disable_start_message: bool = Field(False, description="Disable startup notification")
     disable_shutdown_message: bool = Field(False, description="Disable shutdown notification")
-    disable_restart_message: bool = Field(False, description="Disable config reload notification")
+    disable_config_reload_message: bool = Field(False, description="Disable config reload notification")
     reload_config: bool = Field(True, description="Disable restart on config change")
 
 class GlobalConfig(BaseConfigModel):
@@ -126,20 +174,17 @@ class GlobalConfig(BaseConfigModel):
 
     @model_validator(mode="before")
     def transform_legacy_format(cls, values):
-    
         # Convert list global_keywords format into dict
         if isinstance(values.get("global_keywords"), list):
             values["global_keywords"] = {
                 "keywords": values["global_keywords"],
                 "keywords_with_attachment": []
             }
-
         # Convert list containers to dict format
         if isinstance(values.get("containers"), list):
             values["containers"] = {
                 name: {} for name in values["containers"]
             }
-
          # Convert list keywords format per container into dict
         for container in values.get("containers"):
             if isinstance(values.get("containers").get(container), list):
@@ -174,6 +219,27 @@ class GlobalConfig(BaseConfigModel):
         return v
 
 
+def format_pydantic_error(e: ValidationError) -> str:
+    error_messages = []
+    for error in e.errors():
+        location = ".".join(map(str, error["loc"]))
+        msg = error["msg"]
+        msg = msg = msg.split("[")[0].strip()
+        error_messages.append(f"Field '{location}': {msg}")
+    return "\n".join(error_messages)
+
+
+def mask_secret_str(data):
+    if isinstance(data, dict):
+        return {k: mask_secret_str(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [mask_secret_str(item) for item in data]
+    elif isinstance(data, SecretStr):
+        return "*****"  
+    else:
+        return data
+
+
 def merge_yaml_and_env(yaml, env_update):
     for key, value in env_update.items():
         if isinstance(value, dict) and key in yaml and key != {}:
@@ -191,6 +257,7 @@ def load_config(path="/app/config.yaml"):
         try:
             with open(path, "r") as file:
                 yaml_config = yaml.safe_load(file)
+                logging.info(f"YAML CONFIG: {yaml_config}")
                 logging.info("config.yaml succesfully loaded.")
                 no_config_file = False
         except FileNotFoundError:
@@ -199,6 +266,7 @@ def load_config(path="/app/config.yaml"):
     else:
         logging.warning("config.yaml not found. Only using environment variables.")
         no_config_file = True
+
     if yaml_config is None:
         yaml_config = {}
     for key in required_keys:
@@ -214,8 +282,9 @@ def load_config(path="/app/config.yaml"):
         "notification_cooldown": os.getenv("NOTIFICATION_COOLDOWN"),
         "reload_config": False if no_config_file is True else os.getenv("DISABLE_RESTART"),
         "disable_start_message": os.getenv("DISABLE_START_MESSAGE"),
-        "disable_restart_message": os.getenv("DISABLE_RESTART_MESSAGE"),
-        "disable_shutdown_message": os.getenv("DISABLE_SHUTDOWN_MESSAGE")
+        "disable_restart_message": os.getenv("DISABLE_CONFIG_RELOAD_MESSAGE"),
+        "disable_shutdown_message": os.getenv("DISABLE_SHUTDOWN_MESSAGE"),
+        "action_cooldown": os.getenv("ACTION_COOLDOWN")
         } 
     ntfy_values =  {
         "url": os.getenv("NTFY_URL"),
@@ -253,6 +322,10 @@ def load_config(path="/app/config.yaml"):
             env_config["settings"][key] = value
     merged_config = merge_yaml_and_env(yaml_config, env_config)
     config = GlobalConfig.model_validate(merged_config)
-    logging.info(f"\n ------------- CONFIG ------------- \n{config.model_dump_json(indent=2, exclude_none=True)}\n ----------------------------------")
+    config_dict = mask_secret_str(config.model_dump(exclude_none=True, exclude_defaults=False, exclude_unset=False))
+    yaml_output = yaml.dump(config_dict, default_flow_style=False, sort_keys=False, indent=4)
+    logging.info(f"\n ------------- CONFIG ------------- \n{yaml_output}\n ----------------------------------")
+
+   # logging.info(f"\n ------------- CONFIG ------------- \n{config.model_dump_json(indent=2, exclude_none=True)}\n ----------------------------------")
     return config
 

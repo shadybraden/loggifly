@@ -55,7 +55,6 @@ def send_ntfy_notification(config, container_name, message, title, file_name=Non
     message_text = f"{message}"
     try:
         if file_name:
-            logging.debug("Message WITH file is being sent")
             headers["Filename"] = file_name
             with open(file_name, "rb") as file:
                 if len(message_text) < 199:
@@ -71,7 +70,6 @@ def send_ntfy_notification(config, container_name, message, title, file_name=Non
                         headers=headers
                     )
         else:
-            logging.debug("Message WITHOUT file is being sent")
             response = requests.post(
                 f"{ntfy_url}/{ntfy_topic}", 
                 data=message_text,
@@ -85,22 +83,12 @@ def send_ntfy_notification(config, container_name, message, title, file_name=Non
         logging.error("Error while trying to connect to ntfy: %s", e)
 
 
-def send_notification(config: GlobalConfig, container_name, message, keyword_list=[], file_name=None):
-    if len(keyword_list) > 2:
-        joined_keywords = ', '.join(f"'{word}'" for word in keyword_list)
-        title = f"The following keywords were found in {container_name}: {joined_keywords}"
-    elif len(keyword_list) == 2:
-        joined_keywords = ' and '.join(f"'{word}'" for word in keyword_list)
-        title = f"{joined_keywords} found in {container_name}"
-    elif len(keyword_list) == 1:
-        title = f"'{keyword_list[0]}' found in {container_name}"
-    else:
-        title = f"{container_name}"
+def send_notification(config: GlobalConfig, container_name, title, message, file_name=None):
+    
     if (config.notifications and config.notifications.ntfy and config.notifications.ntfy.url and config.notifications.ntfy.topic):
         send_ntfy_notification(config, container_name, message, title, file_name)
     if (config.notifications and config.notifications.apprise and config.notifications.apprise.url):
         apprise_url = config.notifications.apprise.url.get_secret_value()
         send_apprise_notification(apprise_url, container_name, message, title, file_name)
-   
+    
 
-   
