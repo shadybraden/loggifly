@@ -257,7 +257,7 @@ def load_config(path="/app/config.yaml"):
         try:
             with open(path, "r") as file:
                 yaml_config = yaml.safe_load(file)
-                logging.info(f"YAML CONFIG: {yaml_config}")
+              #  logging.info(f"YAML CONFIG: {yaml_config}")
                 logging.info("config.yaml succesfully loaded.")
                 no_config_file = False
         except FileNotFoundError:
