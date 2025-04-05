@@ -22,7 +22,7 @@ Get instant alerts for security breaches, system errors, or custom patterns thro
 **Ideal For**:
 - ✅ Catching security breaches (e.g., failed logins in Vaultwarden)
 - ✅ Debugging crashes with attached log context
-- ✅ Restarting the container on specific errors or stopping it completely to avoid restart loops
+- ✅ Restarting containers on specific errors or stopping them completely to avoid restart loops
 - ✅ Monitoring custom app behaviors (e.g., when a user downloads an audiobook on your Audiobookshelf server)
 
 
