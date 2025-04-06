@@ -201,7 +201,7 @@ class DockerLogMonitor:
                     now = datetime.now()
                     log_stream = container.logs(stream=True, follow=True, since=now)
                     self.add_stream_connection(container.name, log_stream)
-                    
+                    logging.info(f"Started Log Stream for {container.name}")
                     for chunk in log_stream:
                         MAX_BUFFER_SIZE = 10 * 1024 * 1024  # 10MB
                         buffer += chunk
@@ -256,8 +256,7 @@ class DockerLogMonitor:
                         log_stream.close()  
                         container_stop_event.set() # to stop flush threads
                         break
-                    logging.info(f"Monitoring stopped for Container: {container.name}. Trying to reconnect")
-
+                    logging.info(f"Log Stream stopped for Container: {container.name}. Reconnecting...")
             logging.info("Monitoring stopped for Container: %s", container.name)
             container_stop_event.set()
 
