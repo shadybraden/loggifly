@@ -20,6 +20,7 @@ containers:
         - restart: traceback
         - stop:
             regex: (username|password).*incorrect # this is how to set regex patterns for action_keywords
+        - restart: critical
       action_cooldown: 300 # 300s is the default time that has to pass until the next action can be triggered (minimum value is always 60)
 
     # If you have configured global_keywords and don't need container specific settings you can define the container name and leave the rest blank
