@@ -22,7 +22,7 @@ Get instant alerts for security breaches, system errors, or custom patterns thro
 **Ideal For**:
 - ✅ Catching security breaches (e.g., failed logins in Vaultwarden)
 - ✅ Debugging crashes with attached log context
-- ✅ Restarting the container on specific errors or stopping it completely to avoid restart loops
+- ✅ Restarting containers on specific errors or stopping them completely to avoid restart loops
 - ✅ Monitoring custom app behaviors (e.g., when a user downloads an audiobook on your Audiobookshelf server)
 
 
@@ -141,7 +141,7 @@ containers:
     # Caution advised! These keywords will trigger a restart/stop of the container
     action_keywords:
       - stop: traceback
-      - restart: {regex: critical.*failed}
+      - restart: critical
 
 # Optional. These keywords are being monitored for all configured containers. There is an action_cooldown (see config deep dive)
 global_keywords:
@@ -251,7 +251,8 @@ containers:
     # action_keywords and action_cooldown can only be set per container
     action_keywords:    # restart & stop are the only supported actions and have to be specified before every keyword
       - stop: traceback
-      - restart: {regex: critical.*failed} # looks weird but this is how to set regex patterns for action_keywords
+      - restart:
+          regex: critical.*failed # this is how to set regex patterns for action_keywords
     action_cooldown: 300 # 300s is the default time that has to pass until the next action can be triggered (minimum value is always 60)
 
 # If you have configured global_keywords and don't need container specific settings you can define the container name and leave the rest blank
