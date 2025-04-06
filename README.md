@@ -51,7 +51,7 @@ Get instant alerts for security breaches, system errors, or custom patterns thro
 - **🔁 Trigger Stop/Restart**: A restart/stop of the monitored container can be triggered on specific critical keywords.
 - **⚙️ Fine-Grained Control**: Unique keywords and other settings (like ntfy topic/tags/priority) per container.
 - **📁 Log Attachments**: Automatically include a log file to the notification for context.
-- **⚡ Auto-Restart on Config Change**: The program restarts when it detects that the config file has been changed.
+- **⚡ Automatic Reload on Config Change**: The program automatically reloads the `config.yaml` when it detects that the file has been changed.
 
 ---
 ## 🖼 Screenshots
