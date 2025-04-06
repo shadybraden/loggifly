@@ -270,7 +270,8 @@ def load_config(path="/app/config.yaml"):
     if yaml_config is None:
         yaml_config = {}
     for key in required_keys:
-        yaml_config.setdefault(key, {})
+        if key not in yaml_config or yaml_config[key] is None:
+            yaml_config[key] = {}
     """
     -------------------------LOAD ENVIRONMENT VARIABLES---------------------
     """
