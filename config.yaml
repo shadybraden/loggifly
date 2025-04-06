@@ -15,7 +15,7 @@ containers:
         - login
       keywords_with_attachment:                    
         - critical
-    # action_keywords will trigger a restart/stop of the container and can only be set per container (vaultwarden might not be the best examlw though)
+    # action_keywords will trigger a restart/stop of the container and can only be set per container (vaultwarden might not be the best examle though)
       action_keywords:    # restart & stop are the only supported actions and have to be specified before every keyword
         - restart: traceback
         - stop:
