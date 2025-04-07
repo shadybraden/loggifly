@@ -247,8 +247,7 @@ containers:
     keywords_with_attachment:
       - critical
 
-    # Caution advised! action_keywords will trigger a restart/stop of the container
-    # action_keywords and action_cooldown can only be set per container
+    # action_keywords will trigger a restart/stop of the container and can only be set per container
     action_keywords:    # restart & stop are the only supported actions and have to be specified before every keyword
       - stop: traceback
       - restart:
