@@ -251,6 +251,7 @@ def merge_yaml_and_env(yaml, env_update):
 
 
 def load_config(path="/app/config.yaml"):
+    config_file = False
     required_keys = ["containers", "notifications", "settings", "global_keywords"]
     yaml_config = {}
     if os.path.isfile(path):
@@ -259,13 +260,12 @@ def load_config(path="/app/config.yaml"):
                 yaml_config = yaml.safe_load(file)
               #  logging.info(f"YAML CONFIG: {yaml_config}")
                 logging.info("config.yaml succesfully loaded.")
-                no_config_file = False
+                config_file = True
         except FileNotFoundError:
             logging.warning("config.yaml not found. Only using environment variables.")
-            no_config_file = True
     else:
         logging.warning("config.yaml not found. Only using environment variables.")
-        no_config_file = True
+        
 
     if yaml_config is None:
         yaml_config = {}
@@ -281,7 +281,7 @@ def load_config(path="/app/config.yaml"):
         "attachment_lines": os.getenv("ATTACHMENT_LINES"),
         "multi_line_entries": os.getenv("MULTI_LINE_ENTRIES"),
         "notification_cooldown": os.getenv("NOTIFICATION_COOLDOWN"),
-        "reload_config": False if no_config_file is True else os.getenv("DISABLE_RESTART"),
+        "reload_config": False if not config_file else os.getenv("RELOAD_CONFIG", "False"),
         "disable_start_message": os.getenv("DISABLE_START_MESSAGE"),
         "disable_restart_message": os.getenv("DISABLE_CONFIG_RELOAD_MESSAGE"),
         "disable_shutdown_message": os.getenv("DISABLE_SHUTDOWN_MESSAGE"),
@@ -308,11 +308,9 @@ def load_config(path="/app/config.yaml"):
             c = c.strip()
             env_config["containers"][c] = {}
     if any(ntfy_values.values()):
-        env_config["notifications"] = {}
         env_config["notifications"]["ntfy"] = ntfy_values
         yaml_config["notifications"]["ntfy"] = {}
     if apprise_values["url"]: 
-        env_config["notifications"] = {}
         env_config["notifications"]["apprise"] = apprise_values
         yaml_config["notifications"]["apprise"] = {}
     for k, v in global_keywords_values.items():
