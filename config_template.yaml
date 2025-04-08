@@ -8,7 +8,7 @@
 #   - at least one keyword (either set globally or per container)
 # The rest is optional or has default values.
 #
-# If you edit this file make sure to rename it to config.yaml
+# If you want to use this file after editing it make sure to rename it to config.yaml
 #
 # With every container exaample you can see some more available configuration options
 
