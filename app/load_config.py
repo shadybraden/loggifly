@@ -164,7 +164,7 @@ class Settings(BaseConfigModel):
     disable_start_message: bool = Field(False, description="Disable startup notification")
     disable_shutdown_message: bool = Field(False, description="Disable shutdown notification")
     disable_config_reload_message: bool = Field(False, description="Disable config reload notification")
-    reload_config: bool = Field(True, description="Disable restart on config change")
+    reload_config: bool = Field(True, description="Disable config reaload on config change")
 
 class GlobalConfig(BaseConfigModel):
     containers: Dict[str, ContainerConfig]
@@ -250,23 +250,28 @@ def merge_yaml_and_env(yaml, env_update):
     return yaml
 
 
-def load_config(path="/app/config.yaml"):
+def load_config(path="/config/config.yaml"):
     config_file = False
     required_keys = ["containers", "notifications", "settings", "global_keywords"]
     yaml_config = {}
-    if os.path.isfile(path):
-        try:
-            with open(path, "r") as file:
-                yaml_config = yaml.safe_load(file)
-              #  logging.info(f"YAML CONFIG: {yaml_config}")
-                logging.info("config.yaml succesfully loaded.")
-                config_file = True
-        except FileNotFoundError:
-            logging.warning("config.yaml not found. Only using environment variables.")
-    else:
-        logging.warning("config.yaml not found. Only using environment variables.")
-        
-
+    old_path = "/app/config.yaml"
+    paths = [path, old_path]
+    for path in paths: 
+        logging.info(f"Trying path: {path}")
+        if os.path.isfile(path):
+            try:
+                with open(path, "r") as file:
+                    yaml_config = yaml.safe_load(file)
+                #  logging.info(f"YAML CONFIG: {yaml_config}")
+                    #logging.info("config.yaml succesfully loaded.")
+                    config_file = True
+                    break
+            except FileNotFoundError:
+                logging.info(f"Error loading the config.yaml file from {path}")
+        else:
+            logging.info(f"The path {path} does not exist.")
+    logging.warning(f"The config.yaml file was not found. Using environment variables.") if not config_file else logging.info(f"The config.yaml file was found in {path}.")
+   # logging.info(f"YAML CONFIG: {yaml_config}")
     if yaml_config is None:
         yaml_config = {}
     for key in required_keys:
@@ -281,7 +286,7 @@ def load_config(path="/app/config.yaml"):
         "attachment_lines": os.getenv("ATTACHMENT_LINES"),
         "multi_line_entries": os.getenv("MULTI_LINE_ENTRIES"),
         "notification_cooldown": os.getenv("NOTIFICATION_COOLDOWN"),
-        "reload_config": False if not config_file else os.getenv("RELOAD_CONFIG", "False"),
+        "reload_config": False if not config_file else os.getenv("RELOAD_CONFIG"), 
         "disable_start_message": os.getenv("DISABLE_START_MESSAGE"),
         "disable_restart_message": os.getenv("DISABLE_CONFIG_RELOAD_MESSAGE"),
         "disable_shutdown_message": os.getenv("DISABLE_SHUTDOWN_MESSAGE"),

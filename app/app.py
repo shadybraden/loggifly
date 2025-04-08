@@ -76,7 +76,7 @@ class DockerLogMonitor:
 
     def handle_signal(self, signum, frame):
         if not self.config.settings.disable_shutdown_message:
-            send_notification(self.config, "Loggifly", "LoggiFly", "Shutting down")
+            send_notification(self.config, "LoggiFly", "LoggiFly", "Shutting down")
         self.shutdown_event.set()
         self.cleanup()
 
@@ -119,6 +119,11 @@ class DockerLogMonitor:
                 self.monitored_containers[c.id] = c
 
             self.start_message()
+            if not self.config.settings.reload_config:
+                self.observer.stop()
+                self.observer.join()
+                logging.info("Config watcher stopped.")
+                
         except Exception as e:
             logging.error(f"Error handling config changes: {e}")
 

@@ -34,7 +34,7 @@ containers:
   # The next 6 settings override the global values only for this container
     ntfy_tags: closed_lock_with_key   
     ntfy_priority: 5
-    ntfy_topic: security
+    ntfy_topic: container4
     attachment_lines: 50     
     notification_cooldown: 2  
     action_cooldown: 300

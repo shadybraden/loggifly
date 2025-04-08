@@ -5,7 +5,8 @@ services:
     container_name: loggifly
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./logsend/config.yaml:/app/config.yaml
+      # Comment out if you only use environment variables. 
+      - ./logsend/config.yaml:/config # Place your config.yaml in this directory or edit and rename the config_template.yaml that gets downloaded
     environment:
       - TZ=Europe/Berlin
     restart: unless-stopped

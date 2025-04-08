@@ -66,6 +66,10 @@ Get instant alerts for security breaches, system errors, or custom patterns thro
 
 ---
 
+> **Note**:<br>
+In previous versions the config file was located in `app/config.yaml`. This path still works but the official path was updated to `config/config.yaml`. LoggiFly will first search in `/config` and then in `/app`.
+
+
 ## ⚡️ Quick start
 
 
@@ -86,7 +90,7 @@ services:
     container_name: loggifly
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-#      - ./config.yaml:/app/config.yaml  # Path to your config file (ignore if you are only using environment variables)
+#      - ./config.yaml:/config  # Path to your config file (ignore if you are only using environment variables)
     environment:
       # Choose at least one notification service
       NTFY_URL: "https://ntfy.sh"       # or your self-hosted instance
@@ -109,24 +113,17 @@ services:
 
 Recommended for granular control and regex patterns. <br>
 
-**Step 1: Update Docker Compose**
+**Step 1: Update the Docker Compose**
 
 Uncomment/add this line in your docker-compose.yml:
 ```yaml
 volumes:
-  - ./YOUR/CONFIG/FOLDER/config.yaml:/app/config.yaml  # 👈 Replace left side of the mapping with your local path
-```
-**Step 2: Create Config File**
-
-Create the config.yaml in your chosen folder:
-```bash
-mkdir -p ./loggifly_config  # Example folder
-cd ./loggifly_config
-touch config.yaml           # Create empty file
+  - ./YOUR/CONFIG/FOLDER/config.yaml:/config/   # 👈 Replace left side of the mapping with your local path
 ```
 **Step 3: Configure Your config.yaml**
+If you mount /config a template file will be downloaded into that directory. You can edit the downloaded template file and rename it to config.yaml.
+Or you can take a look at this very minimal config.yaml which you can also edit and then copy paste into a newly created `config.yaml` file in the mounted /config volume. Note that there are more aivalable configuration options that you can take a look at in the [Configuration-Deep-Dive](#-Configuration-Deep-Dive)
 
-Add this minimal example config to the file you just created and edit it according to your needs.<br>(If you want more options take a look at the more detailed [config walkthrough](#-Configuration-Deep-Dive) or at this [example config](/config.yaml)):
 ```yaml
 # You have to configure at least one container.
 containers:
