@@ -66,18 +66,18 @@ Get instant alerts for security breaches, system errors, or custom patterns thro
 
 ---
 
-> **Note**:<br>
-In previous versions the config file was located in `app/config.yaml`. This path still works but the official path was updated to `config/config.yaml`. LoggiFly will first search in `/config` and then in `/app`.
-
 
 ## ⚡️ Quick start
 
 
 In this quickstart only the most essential settings are covered, [here](#-Configuration-Deep-Dive) is a more detailed config walkthrough.<br>
 
-Choose your preferred setup method - simple environment variables for basic use, or a YAML config for advanced control.
-- Environment variables allow for a simple setup and let you spin this thing up in a minute
+Choose your preferred setup method - simple environment variables for basic use or a YAML config for advanced control.
+- Environment variables allow for a simple and much quicker setup
 - With YAML you can use complex Regex patterns, have different keywords & other settings per container and set keywords that trigger a restart/stop of the container.
+
+> **Note**:<br>
+In previous versions the config file was located in `/app/config.yaml`. This path still works but the official path was updated to `/config/config.yaml`. LoggiFly will first first look in `/config/config.yaml` and then `/app/config.yaml`. When `/config` is mounted a config template will be downloaded in that directory. 
 
 <details><summary><em>Click to expand:</em> 🐋 <strong>Basic Setup: Docker Compose (Environment Variables)</strong></summary>
 Ideal for quick setup with minimal configuration
@@ -90,11 +90,11 @@ services:
     container_name: loggifly
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-#      - ./config.yaml:/config  # Path to your config file (ignore if you are only using environment variables)
+#      - ./loggifly/config:/config  # This is where you would put your config file (ignore if you are only using environment variables)
     environment:
       # Choose at least one notification service
-      NTFY_URL: "https://ntfy.sh"       # or your self-hosted instance
-      NTFY_TOPIC: "your_topic"          # e.g., "docker_alerts"
+      NTFY_URL: "https://ntfy.sh"       
+      NTFY_TOPIC: "your_topic"          
       # Token or Username+Password In case you need authentication
       # NTFY_TOKEN:
       # NTFY_USERNAME:
@@ -118,11 +118,13 @@ Recommended for granular control and regex patterns. <br>
 Uncomment/add this line in your docker-compose.yml:
 ```yaml
 volumes:
-  - ./YOUR/CONFIG/FOLDER/config.yaml:/config/   # 👈 Replace left side of the mapping with your local path
+  - ./loggifly/config:/config  # 👈 Replace left side of the mapping with your local path
 ```
-**Step 3: Configure Your config.yaml**
-If you mount /config a template file will be downloaded into that directory. You can edit the downloaded template file and rename it to config.yaml.
-Or you can take a look at this very minimal config.yaml which you can also edit and then copy paste into a newly created `config.yaml` file in the mounted /config volume. Note that there are more aivalable configuration options that you can take a look at in the [Configuration-Deep-Dive](#-Configuration-Deep-Dive)
+**Step 2: Configure Your config.yaml**
+
+If you mount `/config` a template file will be downloaded into that directory. You can edit the downloaded template file and rename it to `config.yaml` to use it.<br>
+Or you can edit and copy paste the following minimal config into a newly created `config.yaml` file in the mounted `/config` directory.<br>
+Note that there are more configuration options available that you can take a look at in the [Configuration-Deep-Dive](#-Configuration-Deep-Dive)
 
 ```yaml
 # You have to configure at least one container.
@@ -179,12 +181,23 @@ The Quick Start only covered the essential settings, here is a more detailed wal
 
 ### 📁 Basic Structure
 
-The **`config.yaml`** file is divided into four main sections:
+The `config.yaml` file is divided into four main sections:
 
 1. **`settings`**: Global settings like cooldowns and log levels. (_Optional since they all have default values_)
 2. **`notifications`**: Configure Ntfy (_URL, Topic, Token, Priority and Tags_) and/or your Apprise URL
 3. **`containers`**: Define which Containers to monitor and their specific Keywords (_plus optional settings_).
 4. **`global_keywords`**: Keywords that apply to _all_ monitored Containers.
+
+
+>❗️ For the program to function you need to configure:
+> - at least one container
+> - at least one notification service (Ntfy or Apprise)
+> - at least one keyword (either set globally or per container)
+>
+>  The rest is optional or has default values.
+
+
+### 🔎 Detailed Configuration Options 
 
 <details><summary><em>Click to expand:</em><strong> ⚙️ Settings </strong></summary>
 
@@ -272,12 +285,13 @@ global_keywords:
 
 </details>
 
+
 [Here](/config.yaml) you can find a full example config.
 
 
 ### 🍀 Environment Variables
 
-Except for `restart_keywords`, container specific settings and regex patterns you can configure most settings via docker environment variables.
+Except for `restart_keywords`, container specific settings/keywords and regex patterns you can configure most settings via docker environment variables.
 
 <details><summary><em>Click to expand:</em><strong> Environment Variables </strong></summary><br>
 
@@ -314,7 +328,7 @@ Except for `restart_keywords`, container specific settings and regex patterns yo
 1. Ensure containers names **exactly match** your Docker **container names**. 
     - Find out your containers names: ```docker ps --format "{{.Names}}" ```
     - 💡 Pro Tip: Define the `container_name:` in your compose files.
-2. **`action_keywords`** can not be set globally and only in the config.yaml. `action_cooldown` is always at least 60s and defaults to 300s
+2. **`action_keywords`** can not be set via environment variables, they can only be set per container in the `config.yaml`. The `action_cooldown` is always at least 60s long and defaults to 300s
 3. **Test Regex Patterns**: Validate patterns at [regex101.com](https://regex101.com) before adding them to your config.
 4. When using a **Docker Socket Proxy** the log stream connection drops every ~10 minutes for whatever reason. LoggiFly simply resets the connection. This works but using a proxy is not officially recommended yet until I am sure everything works flawlessly. If you notice any bugs let me know!
 5. **Troubleshooting Multi-Line Log Entries**. If LoggiFly only catches single lines from log entries that span over multiple lines:
