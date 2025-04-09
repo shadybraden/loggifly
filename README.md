@@ -41,7 +41,7 @@ Get instant alerts for security breaches, system errors, or custom patterns thro
   - [Basic config structure](#-basic-structure)
   - [Detailed Configuration Options](#-detailed-configuration-options)
   - [Environment Variables](#-environment-variables)
-- [Using a Docker Socket Proxy](#-using-a-docker-socket-proxy)
+- [Socket Proxy](#-socket-proxy)
 - [Tips](#-tips)
 
 ---
@@ -68,6 +68,8 @@ Get instant alerts for security breaches, system errors, or custom patterns thro
 
 ---
 
+>[!TIP]
+For better security use a [Docker Socket Proxy](#-socket-proxy). You won't be able to trigger container stops/restarts with a proxy, but if you don't need that and want to secure your setup I recommend you take a look at [this section](#-socket-proxy) before you finish the Quick Start Install process and think about using that compose file instead of the basic one in the Quick Start.
 
 ## ⚡️ Quick start
 
@@ -78,8 +80,9 @@ Choose your preferred setup method - simple environment variables for basic use 
 - Environment variables allow for a simple and much quicker setup
 - With YAML you can use complex Regex patterns, have different keywords & other settings per container and set keywords that trigger a restart/stop of the container.
 
-> **Note**:<br>
-In previous versions the config file was located in `/app/config.yaml`. This path still works but the official path was updated to `/config/config.yaml`. LoggiFly will first first look in `/config/config.yaml` and then `/app/config.yaml`. When `/config` is mounted a config template will be downloaded in that directory. 
+> [!Note]
+In previous versions the config file was located in `/app/config.yaml`. This path still works but the official path was updated to `/config/config.yaml`. LoggiFly will first first look in `/config/config.yaml` and then `/app/config.yaml`.<br>
+When `/config` is mounted a config template will be downloaded into that directory. 
 
 <details><summary><em>Click to expand:</em> 🐋 <strong>Basic Setup: Docker Compose (Environment Variables)</strong></summary>
 Ideal for quick setup with minimal configuration
@@ -113,19 +116,21 @@ services:
 
 <details><summary><em>Click to expand:</em><strong> 📜 Advanced Setup: YAML Configuration</strong></summary>
 
-Recommended for granular control and regex patterns. <br>
+Recommended for granular control, regex patterns and action_keywords. <br>
 
-**Step 1: Update the Docker Compose**
+**Step 1: Docker Compose**
 
-Uncomment/add this line in your docker-compose.yml:
+Use this [docker compose](/docker-compose.yaml) and edit this line:
 ```yaml
 volumes:
   - ./loggifly/config:/config  # 👈 Replace left side of the mapping with your local path
 ```
+If you want you can configure some of the settings or sensitive values like ntfy tokens or apprise URLs via [Environment Variables](#-environment-variables).
+
 **Step 2: Configure Your config.yaml**
 
-If you mount `/config` a template file will be downloaded into that directory. You can edit the downloaded template file and rename it to `config.yaml` to use it.<br>
-Or you can edit and copy paste the following minimal config into a newly created `config.yaml` file in the mounted `/config` directory.<br>
+If you mount the path `/config` a template file will be downloaded into that directory. You can edit the downloaded template file and rename it to `config.yaml` to use it.<br>
+Or you can edit and copy paste the following minimal config into a newly created `config.yaml` file in that mounted `/config` directory.<br>
 Note that there are more configuration options available that you can take a look at in the [Configuration-Deep-Dive](#-Configuration-Deep-Dive)
 
 ```yaml
@@ -191,10 +196,11 @@ The `config.yaml` file is divided into four main sections:
 4. **`global_keywords`**: Keywords that apply to _all_ monitored Containers.
 
 
->❗️ For the program to function you need to configure:
-> - at least one container
-> - at least one notification service (Ntfy or Apprise)
-> - at least one keyword (either set globally or per container)
+> [!IMPORTANT]
+For the program to function you need to configure:
+>- at least one container
+>- at least one notification service (Ntfy or Apprise)
+>- at least one keyword (either set globally or per container)
 >
 >  The rest is optional or has default values.
 
@@ -231,7 +237,7 @@ notifications:
     topic: loggifly.                # Required. the topic for Ntfy
     token: ntfy-token               # Ntfy token in case you need authentication 
     username: john                  # Ntfy Username+Password in case you need authentication 
-    password: 1234                  # Ntfy Username+Password in case you need authentication 
+    password: password              # Ntfy Username+Password in case you need authentication 
     priority: 3                     # Ntfy priority (1-5)
     tags: kite,mag                  # Ntfy tags/emojis 
   apprise:
@@ -244,30 +250,35 @@ notifications:
 
 ```yaml
 containers:
-  container-name:     # Must match exact container_name
-    # The next 5 settings are optional. They override the respective global setting for this container 
-    ntfy_topic: your_topic
-    ntfy_tags: "tag1, tag2"     
-    ntfy_priority: 4            
-    attachment_lines: 10        
-    notification_cooldown: 10   
-    # Configure at least one type of keywords or use global keywords
-    keywords:                                 
-      - error                                  # Simple text matches
-      - regex: (username|password).*incorrect  # Use regex patterns when you need them
-    # When one of these keywords is found a logfile is attached to the notification
+  container1: # leave blank if you only need global keywords
+
+  container2: # these names must match the exact container names
+    keywords:
+      - keyword1
+      - regex: regex-patern   # this is how to set regex patterns
+    keywords_with_attachment: # attach a logfile to the notification
+      - keyword2
+    action_keywords: # trigger a restart/stop of the container. can not be set globally
+      - restart: keyword3
+      - stop: keyword4
+  
+  container3:
+  # The next 6 settings override the global settings only for this container
+    ntfy_tags: closed_lock_with_key   
+    ntfy_priority: 5
+    ntfy_topic: container3
+    attachment_lines: 50     
+    notification_cooldown: 2  
+    action_cooldown: 60 
+
+    keywords:
+      - keyword1
     keywords_with_attachment:
-      - critical
-
-    # action_keywords will trigger a restart/stop of the container and can only be set per container
-    action_keywords:    # restart & stop are the only supported actions and have to be specified before every keyword
-      - stop: traceback
-      - restart:
-          regex: critical.*failed # this is how to set regex patterns for action_keywords
-    action_cooldown: 300 # 300s is the default time that has to pass until the next action can be triggered (minimum value is always 60)
-
-# If you have configured global_keywords and don't need container specific settings you can define the container name and leave the rest blank
-  another-container-name:
+      - keyword2
+    action_keywords:  
+      - stop: keyword3
+      - restart: 
+          regex: regex-pattern # this is how to set regex patterns for action_keywords
 ```
 
  </details>
@@ -302,17 +313,17 @@ Except for `restart_keywords`, container specific settings/keywords and regex pa
 |-----------------------------------|----------------------------------------------------------|----------|
 | `NTFY_URL`                      | URL of your Ntfy server instance                           | _N/A_    |
 | `NTFY_TOKEN`                    | Authentication token for Ntfy in case you need authentication.      | _N/A_    |
-| `NTFY_USERNAME`                 | Ntfy Username in case you need authentication.             | _N/A_    |
-| `NTFY_PASSWORD`                 | Ntfy password in case you need authentication.             | _N/A_    |
+| `NTFY_USERNAME`                 | Ntfy Username to use with the password in case you need authentication.             | _N/A_    |
+| `NTFY_PASSWORD`                 | Ntfy password to use with the username in case you need authentication.             | _N/A_    |
 | `NTFY_TOPIC`                    | Notification topic for Ntfy.                               | _N/A_  |
-| `NTFY_TAGS`                     | Ntfy [Tags/Emojis](https://docs.ntfy.sh/emojis/) for ntfy notifications. | kite,mag  |
+| `NTFY_TAGS`                     | [Tags/Emojis](https://docs.ntfy.sh/emojis/) for ntfy notifications. | kite,mag  |
 | `NTFY_PRIORITY`                 | Notification [priority](https://docs.ntfy.sh/publish/?h=priori#message-priority) for ntfy messages.                 | 3 / default |
 | `APPRISE_URL`                   | Any [Apprise-compatible URL](https://github.com/caronc/apprise/wiki)  | _N/A_    |
 | `CONTAINERS`                    | A comma separated list of containers. These are added to the containers from the config.yaml (if you are using one).| _N/A_     |
 | `GLOBAL_KEYWORDS`       | Keywords that will be monitored for all containers. Overrides `global_keywords.keywords` from the config.yaml.| _N/A_     |
 | `GLOBAL_KEYWORDS_WITH_ATTACHMENT`| Notifications triggered by these global keywords have a logfile attached. Overrides `global_keywords.keywords_with_attachment` from the config.yaml.| _N/A_     |
 | `NOTIFICATION_COOLDOWN`         | Cooldown period (in seconds) per container per keyword before a new message can be sent  | 5        | 
-| `ACTION_COOLDOWN`         | Cooldown period (in seconds) before the next container action can be performed. Maximum is always at least 60s. (`action_keywords` are only configurable in YAML)  | 300        |
+| `ACTION_COOLDOWN`         | Cooldown period (in seconds) before the next container action can be performed. Always at least 60s. (`action_keywords` are only configurable in YAML)  | 300        |
 | `LOG_LEVEL`                     | Log Level for LoggiFly container logs.                    | INFO     |
 | `MULTI_LINE_ENTRIES`            | When enabled the program tries to catch log entries that span multiple lines.<br>If you encounter bugs or you simply don't need it you can disable it.| True     |
 | `ATTACHMENT_LINES`              | Define the number of Log Lines in the attachment file     | 20     |
@@ -325,11 +336,14 @@ Except for `restart_keywords`, container specific settings/keywords and regex pa
 
 ---
 
-## ⚠️ Using a Docker Socket Proxy
-When using a Docker Socket Proxy the connection drops every ~10 minutes for whatever reason. LoggiFly simply resets the connection.
-With the linuxserver Image there have been some problems so the recommended proxy is [Tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy). Services in the same compose file are automatically in the same docker network. If you are using different compose files you will have to set the network manually.
+## ⚠️ Socket Proxy
+A Docker Socket Proxy adds a security layer by controlling access to the Docker daemon — essentially letting LoggiFly only read container info and logs without giving it full control over the docker socket.<br>
+With the linuxserver Image I have had some connection and timeout problems while streaming logs so the recommended proxy is [Tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy).<br>
+When using the Tecnativa Proxy the log stream connection drops every ~10 minutes for whatever reason, LoggiFly simply resets the connection.<br>
 Here is a sample docker-compose file:
->Note that `action_keywords` don't work when using a socket proxy.
+
+
+<details><summary><em>Click to expand:</em> <strong>Socket Proxy: Docker Compose </strong></summary>
 
 ```yaml
 services:
@@ -356,6 +370,11 @@ services:
     restart: unless-stopped
 
 ```
+
+</details>
+
+>[!Note]
+`action_keywords` don't work when using a socket proxy.
 
 ## 💡 Tips
 

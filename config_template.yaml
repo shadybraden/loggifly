@@ -16,7 +16,7 @@ containers:
 
   container1: # leave blank if you only need global keywords
 
-  container2:
+  container2: # must match exact container name
     keywords:
       - keyword1
       - keyword2
@@ -26,7 +26,7 @@ containers:
       - regex: regex-patern       # this is how to set regex patterns
     keywords_with_attachment: # attach a logfile to the notification
       - keyword2
-    action_keywords: # trigger a restart/stop of the container
+    action_keywords: # trigger a restart/stop of the container. can not be set globally
       - restart: keyword3
       - stop: keyword4
   
