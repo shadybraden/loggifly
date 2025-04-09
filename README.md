@@ -41,6 +41,7 @@ Get instant alerts for security breaches, system errors, or custom patterns thro
   - [Basic config structure](#-basic-structure)
   - [Detailed Configuration Options](#-detailed-configuration-options)
   - [Environment Variables](#-environment-variables)
+- [Using a Docker Socket Proxy](#-using-a-docker-socket-proxy)
 - [Tips](#-tips)
 
 ---
@@ -324,7 +325,7 @@ Except for `restart_keywords`, container specific settings/keywords and regex pa
 
 ---
 
-## Docker Socket Proxy
+## ⚠️ Using a Docker Socket Proxy
 When using a Docker Socket Proxy the connection drops every ~10 minutes for whatever reason. LoggiFly simply resets the connection.
 With the linuxserver Image there have been some problems so the recommended proxy is [Tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy). Services in the same compose file are automatically in the same docker network. If you are using different compose files you will have to set the network manually.
 Here is a sample docker-compose file:
