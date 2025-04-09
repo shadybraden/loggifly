@@ -121,7 +121,6 @@ class DockerLogMonitor:
             self.start_message()
             if not self.config.settings.reload_config:
                 self.observer.stop()
-                self.observer.join()
                 logging.info("Config watcher stopped.")
                 
         except Exception as e:
