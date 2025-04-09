@@ -39,6 +39,7 @@ Get instant alerts for security breaches, system errors, or custom patterns thro
 - [Quick Start](#️-quick-start)
 - [Configuration Deep Dive](#-Configuration-Deep-Dive)
   - [Basic config structure](#-basic-structure)
+  - [Detailed Configuration Options](#-detailed-configuration-options)
   - [Environment Variables](#-environment-variables)
 - [Tips](#-tips)
 
@@ -323,6 +324,38 @@ Except for `restart_keywords`, container specific settings/keywords and regex pa
 
 ---
 
+## Docker Socket Proxy
+When using a Docker Socket Proxy the connection drops every ~10 minutes for whatever reason. LoggiFly simply resets the connection.
+With the linuxserver Image there have been some problems so the recommended proxy is [Tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy). Services in the same compose file are automatically in the same docker network. If you are using different compose files you will have to set the network manually.
+Here is a sample docker-compose file:
+>Note that `action_keywords` don't work when using a socket proxy.
+
+```yaml
+services:
+  loggifly:
+    image: ghcr.io/clemcer/loggifly:latest
+    container_name: loggifly 
+    volumes:
+      - .loggifly/config:/config
+    environment:
+      TZ: Europe/Berlin
+      DOCKER_HOST: tcp://socket-proxy:2375
+    depends_on:
+      - socket-proxy
+    restart: unless-stopped
+    
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy
+    container_name: docker-socket-proxy
+    environment:
+      - CONTAINERS=1  
+      - POST=0        
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro  
+    restart: unless-stopped
+
+```
+
 ## 💡 Tips
 
 1. Ensure containers names **exactly match** your Docker **container names**. 
@@ -330,8 +363,7 @@ Except for `restart_keywords`, container specific settings/keywords and regex pa
     - 💡 Pro Tip: Define the `container_name:` in your compose files.
 2. **`action_keywords`** can not be set via environment variables, they can only be set per container in the `config.yaml`. The `action_cooldown` is always at least 60s long and defaults to 300s
 3. **Test Regex Patterns**: Validate patterns at [regex101.com](https://regex101.com) before adding them to your config.
-4. When using a **Docker Socket Proxy** the log stream connection drops every ~10 minutes for whatever reason. LoggiFly simply resets the connection. This works but using a proxy is not officially recommended yet until I am sure everything works flawlessly. If you notice any bugs let me know!
-5. **Troubleshooting Multi-Line Log Entries**. If LoggiFly only catches single lines from log entries that span over multiple lines:
+4. **Troubleshooting Multi-Line Log Entries**. If LoggiFly only catches single lines from log entries that span over multiple lines:
     - Wait for Patterns: LoggiFly needs to process a few lines in order to detect the pattern the log entries start with (e.g. timestamps/log level)
     - Unrecognized Patterns: If issues persist, open an issue and share the affected log samples
 
