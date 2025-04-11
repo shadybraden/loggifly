@@ -29,7 +29,7 @@ class DockerLogMonitor:
         except ValidationError as e:
             logging.critical(f"Error loading Config: {format_pydantic_error(e)}")
             logging.info("Waiting 10s to prevent restart loop...")
-            time.sleep(10)
+            time.sleep(15)
             sys.exit(1)
 
         self._init_logging()
@@ -199,7 +199,6 @@ class DockerLogMonitor:
                 self.add_processor_instance(processor, container_stop_event, container.name)
             container_stop_event.clear()
             while not self.shutdown_event.is_set():
-                logging.debug(f"Starting Log Stream for {container.name}")
                 buffer = b""
                 try:
                     now = datetime.now()
@@ -304,10 +303,10 @@ class DockerLogMonitor:
         def event_handler():
             error_count = 0
             last_error_time = time.time()
-            while not self.shutdown_event.is_set():# and not self.restarting_event.is_set():
+            while not self.shutdown_event.is_set():
                 now = time.time()
                 try: 
-                    for event in self.client.events(decode=True, filters={"event": ["start", "stop"]}, since=now): #["start", "stop"]}):
+                    for event in self.client.events(decode=True, filters={"event": ["start", "stop"]}, since=now):
                         if self.shutdown_event.is_set():
                             logging.debug("Shutdown event is set. Stopping event handler.")
                             break
