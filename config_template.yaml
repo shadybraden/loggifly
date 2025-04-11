@@ -2,7 +2,7 @@
 #
 # This is a template for the config.yaml file.
 # You can edit this file and remove all the parts you don't need.
-# The only required parts are: 
+# For the program to function you need to configure: 
 #   - at least one container
 #   - at least one notification service (Ntfy or Apprise)
 #   - at least one keyword (either set globally or per container)

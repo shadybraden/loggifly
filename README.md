@@ -41,7 +41,7 @@ Get instant alerts for security breaches, system errors, or custom patterns thro
   - [Basic config structure](#-basic-structure)
   - [Detailed Configuration Options](#-detailed-configuration-options)
   - [Environment Variables](#-environment-variables)
-- [Socket Proxy](#-socket-proxy)
+- [Socket Proxy](#%EF%B8%8F-socket-proxy)
 - [Tips](#-tips)
 
 ---
@@ -69,7 +69,7 @@ Get instant alerts for security breaches, system errors, or custom patterns thro
 ---
 
 >[!TIP]
-For better security use a [Docker Socket Proxy](#-socket-proxy). You won't be able to trigger container stops/restarts with a proxy, but if you don't need that and want to secure your setup I recommend you take a look at [this section](#-socket-proxy) before you finish the Quick Start Install process and think about using that compose file instead of the basic one in the Quick Start.
+For better security use a [Docker Socket Proxy](#%EF%B8%8F-socket-proxy). You won't be able to trigger container stops/restarts with a proxy, but if you don't need that and want to secure your setup I recommend you take a look at [this section](#%EF%B8%8F-socket-proxy) before you finish the Quick Start Install process and think about using that compose file instead of the basic one in the Quick Start.
 
 ## ⚡️ Quick start
 
@@ -129,10 +129,9 @@ If you want you can configure some of the settings or sensitive values like ntfy
 
 **Step 2: Configure Your config.yaml**
 
-If you mount the path `/config` a template file will be downloaded into that directory. You can edit the downloaded template file and rename it to `config.yaml` to use it.<br>
-Or you can edit and copy paste the following minimal config into a newly created `config.yaml` file in that mounted `/config` directory.<br>
-Note that there are more configuration options available that you can take a look at in the [Configuration-Deep-Dive](#-Configuration-Deep-Dive)
-
+If `/config` is mounted a [template file](/config_template.yaml) will be downloaded into that directory. You can edit the downloaded template file and rename it to `config.yaml` to use it.<br>
+You can also take a look at the [Configuration-Deep-Dive](#-Configuration-Deep-Dive) for all the configuration options.<br>
+Or you can edit and copy paste the following minimal config into a newly created `config.yaml` file in `/config`.
 ```yaml
 # You have to configure at least one container.
 containers:
@@ -298,8 +297,10 @@ global_keywords:
 
 </details>
 
+<br>
 
-[Here](/config.yaml) you can find a full example config.
+[Here](/config_template.yaml) you can find a config template with all available configuration options and explaining comments. When `/config` is mounted in the volumes section of your docker compose this template file will be downloaded. <br>
+[Here](/config.yaml) you can find an example config with some use cases.
 
 
 ### 🍀 Environment Variables
@@ -337,6 +338,7 @@ Except for `restart_keywords`, container specific settings/keywords and regex pa
 ---
 
 ## ⚠️ Socket Proxy
+
 A Docker Socket Proxy adds a security layer by controlling access to the Docker daemon — essentially letting LoggiFly only read container info and logs without giving it full control over the docker socket.<br>
 With the linuxserver Image I have had some connection and timeout problems while streaming logs so the recommended proxy is [Tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy).<br>
 When using the Tecnativa Proxy the log stream connection drops every ~10 minutes for whatever reason, LoggiFly simply resets the connection.<br>
@@ -372,6 +374,8 @@ services:
 ```
 
 </details>
+
+<br>
 
 >[!Note]
 `action_keywords` don't work when using a socket proxy.
