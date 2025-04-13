@@ -1,7 +1,9 @@
 
 ###### CONFIG EXAMPLE ######
 #
-# This is an example config file for loggifly.
+# This is an example config.yaml file for loggifly.
+#
+# If you want to use this file after editing it make sure to rename it to config.yaml
 #
 # Feel free to contribute to the containers section of this example config with use cases you have found helpful :)
 

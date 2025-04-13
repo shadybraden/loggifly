@@ -81,7 +81,8 @@ Choose your preferred setup method - simple environment variables for basic use 
 - With YAML you can use complex Regex patterns, have different keywords & other settings per container and set keywords that trigger a restart/stop of the container.
 
 > [!Note]
-In previous versions the config file was located in `/app/config.yaml`. This path still works but the official path was updated to `/config/config.yaml`. LoggiFly will first first look in `/config/config.yaml` and then `/app/config.yaml`.<br>
+In previous versions the default location for the `config.yaml` file was `/app/config.yaml`. The old path still works (so not a breaking change) but the new official path is now `/config/config.yaml`.<br>
+LoggiFly will first look in `/config/config.yaml`, and fall back to `/app/config.yaml` if it's not found.<br>
 When `/config` is mounted a config template will be downloaded into that directory. 
 
 <details><summary><em>Click to expand:</em> 🐋 <strong>Basic Setup: Docker Compose (Environment Variables)</strong></summary>
@@ -300,7 +301,7 @@ global_keywords:
 <br>
 
 [Here](/config_template.yaml) you can find a config template with all available configuration options and explaining comments. When `/config` is mounted in the volumes section of your docker compose this template file will be downloaded. <br>
-[Here](/config.yaml) you can find an example config with some use cases.
+[Here](/config_example.yaml) you can find an example config with some use cases.
 
 
 ### 🍀 Environment Variables
