@@ -96,7 +96,8 @@ services:
     container_name: loggifly
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-#      - ./loggifly/config:/config  # This is where you would put your config file (ignore if you are only using environment variables)
+      # This is where you would put your config.yaml file (ignore if you are only using environment variables)
+      # - ./loggifly/config:/config  
     environment:
       # Choose at least one notification service
       NTFY_URL: "https://ntfy.sh"       
@@ -354,7 +355,7 @@ services:
     image: ghcr.io/clemcer/loggifly:latest
     container_name: loggifly 
     volumes:
-      - .loggifly/config:/config
+      - .loggifly/config:/config # Place your config.yaml here
     environment:
       TZ: Europe/Berlin
       DOCKER_HOST: tcp://socket-proxy:2375
