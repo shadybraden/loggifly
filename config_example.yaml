@@ -1,0 +1,80 @@
+
+###### CONFIG EXAMPLE ######
+#
+# This is an example config.yaml file for loggifly.
+#
+# If you want to use this file after editing it make sure to rename it to config.yaml
+#
+# Feel free to contribute to the containers section of this example config with use cases you have found helpful :)
+
+containers:        
+    audiobookshelf:
+      ntfy_topic: abs
+      ntfy_tags: books, headphones
+      notification_cooldown: 5
+      keywords:
+        - podcast
+        - requested download
+        - downloaded item 
+        - regex: User.*logged in      # when a user logs in
+        - failed login                # Failed login to the web interface
+        - Error in openid callback    # Error when trying to login with OIDC
+
+    vaultwarden:
+      ntfy_tags: closed_lock_with_key   
+      ntfy_priority: 5
+      ntfy_topic: security
+      notification_cooldown: 0
+      keywords:
+        - regex: (username|password).*incorrect
+
+    ebook2audiobook:
+      attachment_lines: 300
+      keywords:
+        - 100%
+        - sentence
+        - converting
+      keywords_with_attachment:
+        - total audio parts saved to        
+
+    adguard:
+      keywords: 
+        - failed
+        - error
+
+    kitchenowl:
+      action_keywords:
+        - stop: traceback   # I have had container restart loops because kitchenowl couldn't connect to my Authentik Server
+
+global_keywords:
+  keywords:
+    - critical
+  keywords_with_attachment:
+    - fatal
+    - panic
+
+
+notifications:                       
+  ntfy:
+    url: http://your-ntfy-server    # Required. The URL of your Ntfy instance
+    topic: loggifly                 # Required. the topic for Ntfy
+    token: ntfy-token               # Ntfy token in case you need authentication 
+    username: john                  # Ntfy Username+Password in case you need authentication 
+    password: password              # Ntfy Username+Password in case you need authentication 
+    priority: 3                     # Ntfy priority (1-5)
+    tags: kite,mag                  # Ntfy tags/emojis 
+  apprise:
+    url: "discord://webhook-url"    # Any Apprise-compatible URL (https://github.com/caronc/apprise/wiki)
+  
+# settings are optional because they all have default values
+# These are the default settings
+settings:          
+  log_level: INFO               # DEBUG, INFO, WARNING, ERROR
+  notification_cooldown: 5      # Seconds between alerts for same keyword (per container)
+  action_cooldown: 300          # Cooldown period (in seconds) before the next container action can be performed. Maximum is always at least 60s.
+  attachment_lines: 20          # Number of Lines to include in log attachments
+  multi_line_entries: True      # Monitor and catch multi-line log entries instead of going line by line. 
+  reload_config: True           # When the config file is changed the program reloads the config
+  disable_start_message: False  # Suppress startup notification
+  disable_shutdown_message: False        # Suppress shutdown notification
+  disable_config_reload_message: False   # Suppress config reload notification
