@@ -271,7 +271,7 @@ containers:
     attachment_lines: 50     
     notification_cooldown: 2  
     action_cooldown: 60 
-
+  
     keywords:
       - keyword1
     keywords_with_attachment:
