@@ -187,7 +187,6 @@ class DockerLogMonitor:
                 return False
             except requests.exceptions.ConnectionError as ce: 
                 logging.error(f"Can not connect to Container {container.name} {ce}")
-                return False
             except Exception as e:
                 logging.error(f"Error while checking container {container.name}: {e}")
                 #logging.debug(traceback.format_exc())
@@ -202,7 +201,7 @@ class DockerLogMonitor:
             error_count = 0
             last_error_time = time.time()  
             if container.name in self.line_processor_instances:
-                logging.debug(f"Re-Using old line processor for container {container.name}")    
+                logging.debug(f" {container.name}: Re-Using old line processor")    
                 processor, container_stop_event = self.line_processor_instances[container.name]["processor"], self.line_processor_instances[container.name]["container_stop_event"]
                 processor._start_flush_thread()
             else:
@@ -216,12 +215,12 @@ class DockerLogMonitor:
                     now = datetime.now()
                     log_stream = container.logs(stream=True, follow=True, since=now)
                     self.add_stream_connection(container.name, log_stream)
-                    logging.info(f"Log Stream for {container.name} started")
+                    logging.info(f"{container.name}: Log Stream started")
                     for chunk in log_stream:
                         MAX_BUFFER_SIZE = 10 * 1024 * 1024  # 10MB
                         buffer += chunk
                         if len(buffer) > MAX_BUFFER_SIZE:
-                            logging.error(f"Buffer overflow detected for container {container.name}, resetting")
+                            logging.error(f"{container.name}: Buffer overflow detected for container, resetting")
                             buffer = b""
                         while b'\n' in buffer:
                             line, buffer = buffer.split(b'\n', 1)
@@ -238,14 +237,14 @@ class DockerLogMonitor:
                         break
 
                 except docker.errors.NotFound as e:
-                    logging.error(f"Log Stream: Container {container} not found: {e}")
+                    logging.error(f"Container {container} during Log Stream: {e}")
                     error_count, last_error_time = self.handle_error(error_count, last_error_time) 
-                    time.sleep(random.uniform(0.5, 2.0))
+                    time.sleep(random.uniform(0.1, 0.8)) # to prevent all threads trying to reconnect at the same time when there are connection problems (especially with a proxy)
                 except docker.errors.APIError as e:
                     error_count, last_error_time = self.handle_error(error_count, last_error_time)
-                    time.sleep(random.uniform(0.5, 2.0))
+                    time.sleep(random.uniform(0.1, 0.8))
                 except Exception as e:
-                    logging.error("Error while trying to monitor %s: %s", container.name, e)
+                    logging.error("Error trying to monitor %s: %s", container.name, e)
                     logging.error("Error details: %s", str(e.__class__.__name__))
                     #logging.debug(traceback.format_exc())
                     error_count, last_error_time = self.handle_error(error_count, last_error_time)
@@ -253,14 +252,14 @@ class DockerLogMonitor:
                 finally:
                     if self.shutdown_event.is_set() or container_stop_event.is_set():   
                         try:
-                            logging.debug(f"Shutdown event or restart event is set. Closing log stream for container {container.name}.")
+                            logging.debug(f"{container.name}: Closing log stream. Shutdown event or restart event is set.")
                             log_stream.close()  
                         except Exception as e:
-                            logging.debug(f"Error closing stream: Container {container.name}: {str(e)}")
+                            logging.debug(f"{container.name}: Error closing stream: Container {str(e)}")
                         finally:
                             break
                     if not check_container(container_start_time):
-                        logging.debug(f"Container {container.name} is not running or was restarted. Getting rid of old thread")
+                        logging.debug(f"{container.name} is not running or was restarted. Getting rid of old thread")
                         try:
                             log_stream.close()
                         except Exception as e:
@@ -275,8 +274,8 @@ class DockerLogMonitor:
                         log_stream.close()  
                         container_stop_event.set() # to stop flush threads
                         break
-                    logging.info(f"Log Stream stopped for Container: {container.name}. Reconnecting...")
-            logging.info("Monitoring stopped for Container: %s", container.name)
+                    logging.info(f"{container.name}: Log Stream stopped. Reconnecting...")
+            logging.info(f"{container.name}: Monitoring stopped for container.")
             container_stop_event.set()
 
 
@@ -330,13 +329,13 @@ class DockerLogMonitor:
                         container = self.client.containers.get(event["Actor"]["ID"])
                         if event.get("Action") == "start":
                             if container.name in self.selected_containers:
-                                logging.info("Monitoring new container: %s", container.name)
+                                logging.info(f"Monitoring new container: {container.name}")
                                 send_notification(self.config, "Loggifly", "LoggiFly", f"Monitoring new container: {container.name}")
                                 self.monitor_container(container)
                                 self.monitored_containers[container.id] = container
                         elif event.get("Action") == "stop":
                             if container.id in self.monitored_containers:
-                                logging.info(f"Docker Event Handler: {container.name} stopped")
+                                logging.info(f"The Container {container.name} was stopped")
                                 self.monitored_containers.pop(container.id)
                                 container_stop_event = self.line_processor_instances[container.name]["container_stop_event"]
                                 container_stop_event.set()
@@ -367,13 +366,11 @@ class DockerLogMonitor:
         thread.start()
     
 
-    def cleanup(self):
-        stream_connections = self.stream_connections.copy()        
-        
+    def cleanup(self):      
         with self.stream_connections_lock:
             for container, _ in self.stream_connections.copy().items():
                 self.close_stream_connecion(container)
-            logging.debug(f"No Log Stream Connections left" if len(stream_connections) ==0 else f"{len(stream_connections)} Log Stream Connections remaining")
+            logging.debug(f"No Log Stream Connections left" if len(self.stream_connections) ==0 else f"{len(self.stream_connections)} Log Stream Connections remaining")
 
         with self.threads_lock:
             alive_threads = []
@@ -393,7 +390,6 @@ class DockerLogMonitor:
             logging.warning(f"Error while trying do close docker client connection during cleanup: {e}")
         # logging.debug(f"Threads still alive {len(alive_threads)}: {alive_threads}")
         # logging.debug(f"Threading Enumerate: {threading.enumerate()}")
-
 
 if __name__ == "__main__":
     monitor = DockerLogMonitor()

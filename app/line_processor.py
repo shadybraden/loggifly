@@ -120,9 +120,9 @@ class LogProcessor:
                 except Exception as e:
                     logging.error(f"Could not read logs of Container {self.container_name}: {e}")
                 if self.valid_pattern:
-                    logging.debug(f"Container: {self.container.name}. Mode: Multi-Line. Found starting pattern(s) in logs.")
+                    logging.debug(f"{self.container.name}: Mode: Multi-Line. Found starting pattern(s) in logs.")
                 else:
-                    logging.debug(f"Container: {self.container.name}. Mode: Single-Line. Could not find starting pattern for {self.container.name} logs. Continuing the search in the next {self.line_limit - self.line_count} lines")
+                    logging.debug(f"{self.container.name}: Mode: Single-Line. Could not find starting pattern in the logs. Continuing the search in the next {self.line_limit - self.line_count} lines")
 
         
             self.buffer = []
@@ -172,13 +172,13 @@ class LogProcessor:
         for pattern in sorted_patterns:
             if pattern[0] not in self.patterns and pattern[1] > threshold:
                 self.patterns.append(pattern[0])
-                logging.debug(f"container: {self.container_name}: Found pattern: {pattern[0]} with {pattern[1]} matches of {self.line_count} lines. {round(pattern[1] / self.line_count * 100, 2)}%")
+                logging.debug(f"{self.container_name}: Found pattern: {pattern[0]} with {pattern[1]} matches of {self.line_count} lines. {round(pattern[1] / self.line_count * 100, 2)}%")
                 self.valid_pattern = True
         if self.patterns == []:
             self.valid_pattern = False
         if self.line_count >= self.line_limit:
             if self.patterns == []:
-                logging.info(f"Container: {self.container_name}: No pattern found in logs after {self.line_limit} lines. Mode: single-line")
+                logging.info(f"{self.container_name}: No pattern found in logs after {self.line_limit} lines. Mode: single-line")
             # else:   
             #     logging.debug(f"Container: {self.container_name}: Found pattern(s) in logs. Stopping the search now after {self.line_limit}] lines. Mode: multi-line.\Patterns found: {self.patterns}")
                 #logging.debug(f"Container: {self.container_name}: Patterns found: {self.patterns}")
