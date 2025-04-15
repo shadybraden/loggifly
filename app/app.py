@@ -1,6 +1,9 @@
+import logging.config
 import os
 import logging
 import docker
+from docker.tls import TLSConfig
+from urllib.parse import urlparse
 import threading
 import traceback
 import requests
@@ -16,6 +19,7 @@ from line_processor import LogProcessor
 from load_config import load_config, format_pydantic_error
 from pydantic import ValidationError
 
+
 logging.basicConfig(
     level="INFO",
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -24,18 +28,27 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-class DockerLogMonitor:
-    def __init__(self):
-        try:
-            self.config = load_config()
-        except ValidationError as e:
-            logging.critical(f"Error loading Config: {format_pydantic_error(e)}")
-            logging.info("Waiting 10s to prevent restart loop...")
-            time.sleep(15)
-            sys.exit(1)
+logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)    
+logging.getLogger("docker").setLevel(logging.INFO)
 
-        self._init_logging()
-        self.client = docker.from_env()
+
+
+class DockerLogMonitor:
+    def __init__(self, client, config, hostname):
+        self.hostname = hostname  # empty string if only one client else the hostname of the client 
+        self.config = config
+        
+        self.logger = logging.getLogger(f"Monitor-{self.hostname}")
+        self.logger.handlers.clear()
+        handler = logging.StreamHandler()
+        formatter = (logging.Formatter(f'%(asctime)s - %(levelname)s - [Host: {self.hostname}] - %(message)s') 
+                     if self.hostname else logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
+        self.logger.setLevel(getattr(logging, self.config.settings.log_level.upper(), logging.INFO))
+        self.logger.propagate = False
+
+        self.client = client
         self.selected_containers = [c for c in self.config.containers]
         self.shutdown_event = threading.Event()
         self.threads = []
@@ -46,58 +59,12 @@ class DockerLogMonitor:
         self.stream_connections = {}
         self.stream_connections_lock = threading.Lock()
         self.monitored_containers = {}
-        
-        signal.signal(signal.SIGTERM, self.handle_signal)
-        signal.signal(signal.SIGINT, self.handle_signal)
-        self.last_config_reload_time = 0
-        self.watch_events()
-
-    def _init_logging(self):
-        log_level = self.config.settings.log_level
-        logging.getLogger().handlers.clear()
-        logging.basicConfig(
-            level = getattr(logging, log_level.upper(), logging.INFO),
-            format="%(asctime)s - %(levelname)s - %(message)s",
-            handlers=[
-                logging.FileHandler("monitor.log", mode="w"),
-                logging.StreamHandler()
-            ]
-        )
-        logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)        
-        logging.info(f"Log-Level set to {log_level}")
-
-            
-    class ConfigHandler(FileSystemEventHandler):
-        def __init__(self, monitor):
-            self.monitor = monitor
-            
-        def on_modified(self, event):
-            if self.monitor.config.settings.reload_config and not event.is_directory and event.src_path.endswith('config.yaml'):
-                self.monitor.reload_config()
 
 
-    def handle_signal(self, signum, frame):
-        if not self.config.settings.disable_shutdown_message:
-            send_notification(self.config, "LoggiFly", "LoggiFly", "Shutting down")
-        self.shutdown_event.set()
-        self.cleanup()
-
-
-    def reload_config(self):
-        if time.time() - self.last_config_reload_time < 3:
-            logging.info("Config reload skipped, waiting for 3 seconds")
-            return
-        logging.info("Config change detected, reloading config...")
-        time.sleep(0.3)
+    def reload_config(self, config):
+        self.config = config
+        self.logger.setLevel(getattr(logging, self.config.settings.log_level.upper(), logging.INFO))
         try:
-            self.config = load_config()
-        except ValidationError as e:
-            logging.critical(f"Error reloading Config (using old config) {format_pydantic_error(e)}")
-
-        if not self.config.settings.disable_config_reload_message:
-            send_notification(self.config, "Loggifly", "LoggiFly", "Reloading Config...")
-        try:
-            self._init_logging()
             self.selected_containers = [c for c in self.config.containers]
             stop_monitoring = [c for _, c in self.monitored_containers.items() if c.name not in self.selected_containers]
             for c in stop_monitoring:
@@ -113,7 +80,7 @@ class DockerLogMonitor:
 
             containers_to_monitor = [c for c in self.client.containers.list() if c.name in self.selected_containers and c.id not in self.monitored_containers.keys()]
             for c in containers_to_monitor:
-                logging.info(f"New Container to monitor: {c.name}")
+                self.logger.info(f"New Container to monitor: {c.name}")
                 if self.line_processor_instances.get(c.name) is not None:
                     container_stop_event = self.line_processor_instances[c.name]["container_stop_event"]
                     container_stop_event.clear()
@@ -123,19 +90,11 @@ class DockerLogMonitor:
             self.start_message()
             if not self.config.settings.reload_config:
                 self.observer.stop()
-                logging.info("Config watcher stopped because reload_config is set to False.")
-                
+                self.logger.info("Config watcher stopped because reload_config is set to False.")
+            
         except Exception as e:
-            logging.error(f"Error handling config changes: {e}")
+            self.logger.error(f"Error handling config changes: {e}")
 
-        self.last_config_reload_time = time.time()
-
-
-    def start_config_watcher(self):
-        self.observer = Observer()
-        self.observer.schedule(self.ConfigHandler(self), path="/app/config.yaml", recursive=False)
-        self.observer.start()
-        self.add_thread(self.observer)
 
     def add_thread(self, thread):
         with self.threads_lock:
@@ -161,9 +120,9 @@ class DockerLogMonitor:
                 stream.close()
                 self.stream_connections.pop(container_name)
             except Exception as e:
-                logging.warning(f"Error trying do close stream during cleanup: {e}")
+                self.logger.warning(f"Error trying do close stream during cleanup: {e}")
         else:
-            logging.debug(f"Could not find log stream connection for container {container_name}")
+            self.logger.debug(f"Could not find log stream connection for container {container_name}")
 
 
     def handle_error(self, error_count, last_error_time):
@@ -173,8 +132,8 @@ class DockerLogMonitor:
                 new_count = 1
             return new_count, current_time
     
-    def monitor_container(self, container):
-        
+
+    def monitor_container(self, container):    
         def check_container(container_start_time):
             try:
                 container.reload()
@@ -183,13 +142,13 @@ class DockerLogMonitor:
                 if container.attrs['State']['StartedAt'] != container_start_time:
                     return False
             except docker.errors.NotFound:
-                logging.error(f"Container {container.name} not found during container check. Stopping monitoring.")
+                self.logger.error(f"Container {container.name} not found during container check. Stopping monitoring.")
                 return False
             except requests.exceptions.ConnectionError as ce: 
-                logging.error(f"Can not connect to Container {container.name} {ce}")
+                self.logger.error(f"Can not connect to Container {container.name} {ce}")
             except Exception as e:
-                logging.error(f"Error while checking container {container.name}: {e}")
-                #logging.debug(traceback.format_exc())
+                self.logger.error(f"Error while checking container {container.name}: {e}")
+                #self.logger.debug(traceback.format_exc())
             return True
 
         def log_monitor():
@@ -197,16 +156,16 @@ class DockerLogMonitor:
             I am using a buffer in case the logstream has an unfinished log line that can't be decoded correctly.
             """
             container_start_time = container.attrs['State']['StartedAt']
-            logging.info(f"Monitoring for Container started: {container.name}")
+            self.logger.info(f"Monitoring for Container started: {container.name}")
             error_count = 0
             last_error_time = time.time()  
             if container.name in self.line_processor_instances:
-                logging.debug(f" {container.name}: Re-Using old line processor")    
+                self.logger.debug(f"{container.name}: Re-Using old line processor")    
                 processor, container_stop_event = self.line_processor_instances[container.name]["processor"], self.line_processor_instances[container.name]["container_stop_event"]
                 processor._start_flush_thread()
             else:
                 container_stop_event = threading.Event()
-                processor = LogProcessor(self.config, container, container_stop_event)
+                processor = LogProcessor(self.logger, self.hostname, self.config, container, container_stop_event)
                 self.add_processor_instance(processor, container_stop_event, container.name)
             container_stop_event.clear()
             while not self.shutdown_event.is_set() and not container_stop_event.is_set():
@@ -215,12 +174,12 @@ class DockerLogMonitor:
                     now = datetime.now()
                     log_stream = container.logs(stream=True, follow=True, since=now)
                     self.add_stream_connection(container.name, log_stream)
-                    logging.info(f"{container.name}: Log Stream started")
+                    self.logger.info(f"{container.name}: Log Stream started")
                     for chunk in log_stream:
                         MAX_BUFFER_SIZE = 10 * 1024 * 1024  # 10MB
                         buffer += chunk
                         if len(buffer) > MAX_BUFFER_SIZE:
-                            logging.error(f"{container.name}: Buffer overflow detected for container, resetting")
+                            self.logger.error(f"{container.name}: Buffer overflow detected for container, resetting")
                             buffer = b""
                         while b'\n' in buffer:
                             line, buffer = buffer.split(b'\n', 1)
@@ -228,7 +187,7 @@ class DockerLogMonitor:
                                 log_line_decoded = str(line.decode("utf-8")).strip()
                             except UnicodeDecodeError:
                                 log_line_decoded = line.decode("utf-8", errors="replace").strip()
-                                logging.warning(f"{container.name}: Error while trying to decode a log line. Used errors='replace' for line: {log_line_decoded}")
+                                self.logger.warning(f"{container.name}: Error while trying to decode a log line. Used errors='replace' for line: {log_line_decoded}")
                             if log_line_decoded: 
                                 processor.process_line(log_line_decoded)
                         if self.shutdown_event.is_set():
@@ -237,80 +196,77 @@ class DockerLogMonitor:
                         break
 
                 except docker.errors.NotFound as e:
-                    logging.error(f"Container {container} during Log Stream: {e}")
+                    self.logger.error(f"Container {container} during Log Stream: {e}")
                     error_count, last_error_time = self.handle_error(error_count, last_error_time) 
                     time.sleep(random.uniform(0.1, 0.8)) # to prevent all threads trying to reconnect at the same time when there are connection problems (especially with a proxy)
                 except docker.errors.APIError as e:
                     error_count, last_error_time = self.handle_error(error_count, last_error_time)
                     time.sleep(random.uniform(0.1, 0.8))
                 except Exception as e:
-                    logging.error("Error trying to monitor %s: %s", container.name, e)
-                    logging.error("Error details: %s", str(e.__class__.__name__))
-                    #logging.debug(traceback.format_exc())
+                    self.logger.error("Error trying to monitor %s: %s", container.name, e)
+                    self.logger.error("Error details: %s", str(e.__class__.__name__))
+                    #self.logger.debug(traceback.format_exc())
                     error_count, last_error_time = self.handle_error(error_count, last_error_time)
                     time.sleep(random.uniform(0.1, 0.8))
                 finally:
                     if self.shutdown_event.is_set() or container_stop_event.is_set():   
                         try:
-                            logging.debug(f"{container.name}: Closing log stream. Shutdown event or restart event is set.")
+                            self.logger.debug(f"{container.name}: Closing log stream. Shutdown event or restart event is set.")
                             log_stream.close()  
                         except Exception as e:
-                            logging.debug(f"{container.name}: Error closing stream: Container {str(e)}")
+                            self.logger.debug(f"{container.name}: Error closing stream: Container {str(e)}")
                         finally:
                             break
                     if not check_container(container_start_time):
-                        logging.debug(f"{container.name} is not running or was restarted. Getting rid of old thread")
+                        self.logger.debug(f"{container.name} is not running or was restarted. Getting rid of old thread")
                         try:
                             log_stream.close()
                         except Exception as e:
-                            logging.error(f"Could not close Log Stream for container {container.name}")
+                            self.logger.error(f"Could not close Log Stream for container {container.name}")
                         finally:
                             break
                     # if there are more than 5 errors in one minute the while loop stops
                     if time.time() - last_error_time > 60:
                         error_count = 0
                     if error_count > 5:
-                        logging.error(f"Error trying to establish Log Stream for {container.name}. Critical error threshold (6) reached.")
+                        self.logger.error(f"Error trying to establish Log Stream for {container.name}. Critical error threshold (6) reached.")
                         log_stream.close()  
-                        container_stop_event.set() # to stop flush threads
+                        container_stop_event.set() # to stop flush threads in the line processor instances
                         break
-                    logging.info(f"{container.name}: Log Stream stopped. Reconnecting...")
-            logging.info(f"{container.name}: Monitoring stopped for container.")
+                    self.logger.info(f"{container.name}: Log Stream stopped. Reconnecting...")
+            self.logger.info(f"{container.name}: Monitoring stopped for container.")
             container_stop_event.set()
-
 
         thread = threading.Thread(target=log_monitor, daemon=True)
         self.add_thread(thread)
         thread.start()
 
+
     def start(self):
         running_containers = self.client.containers.list()
         containers_to_monitor = [c for c in running_containers if c.name in self.selected_containers]
-        
         for container in containers_to_monitor:
             self.monitor_container(container)
             self.monitored_containers[container.id] = container
-        
+        self.watch_events()
         self.start_message()
-        if self.config.settings.reload_config:
-            self.start_config_watcher()
 
 
     def start_message(self):
         monitored_containers_message = "\n - ".join(c.name for id, c in self.monitored_containers.items())
         unmonitored_containers = [c for c in self.selected_containers if c not in [c.name for id, c in self.monitored_containers.items()]]
         unmonitored_containers_message = "\n - ".join(unmonitored_containers) if unmonitored_containers else ""
-        logging.info(f"These containers are being monitored:\n - {monitored_containers_message}")
+        self.logger.info(f"These containers are being monitored:\n - {monitored_containers_message}")
         if unmonitored_containers:
             unmonitored_containers_str = "\n - ".join(unmonitored_containers)
-            logging.info(f"These selected Containers are not running:\n - {unmonitored_containers_str}")
+            self.logger.info(f"These selected Containers are not running:\n - {unmonitored_containers_str}")
         else:
             unmonitored_containers_str = ""
 
         if self.config.settings.disable_start_message is False:
             send_notification(self.config, "loggifly", "LoggiFly", 
                               f"""The program is running and monitoring these selected Containers:\n - {monitored_containers_message}
-                              \nThese selected Containers are not running:\n - {unmonitored_containers_message}"""
+                              \nThese selected Containers are not running:\n - {unmonitored_containers_message}""", hostname=self.hostname
                               )
 
 
@@ -319,47 +275,47 @@ class DockerLogMonitor:
             error_count = 0
             last_error_time = time.time()
             while not self.shutdown_event.is_set():
-                logging.info("Event Handler started. Watching for new containers...")
+                self.logger.info("Event Handler started. Watching for new containers...")
                 now = time.time()
                 try: 
                     for event in self.client.events(decode=True, filters={"event": ["start", "stop"]}, since=now):
                         if self.shutdown_event.is_set():
-                            logging.debug("Shutdown event is set. Stopping event handler.")
+                            self.logger.debug("Shutdown event is set. Stopping event handler.")
                             break
                         container = self.client.containers.get(event["Actor"]["ID"])
                         if event.get("Action") == "start":
                             if container.name in self.selected_containers:
-                                logging.info(f"Monitoring new container: {container.name}")
-                                send_notification(self.config, "Loggifly", "LoggiFly", f"Monitoring new container: {container.name}")
+                                self.logger.info(f"Monitoring new container: {container.name}")
+                                send_notification(self.config, "Loggifly", "LoggiFly", f"Monitoring new container: {container.name}", hostname=self.hostname)
                                 self.monitor_container(container)
                                 self.monitored_containers[container.id] = container
                         elif event.get("Action") == "stop":
                             if container.id in self.monitored_containers:
-                                logging.info(f"The Container {container.name} was stopped")
+                                self.logger.info(f"The Container {container.name} was stopped")
                                 self.monitored_containers.pop(container.id)
                                 container_stop_event = self.line_processor_instances[container.name]["container_stop_event"]
                                 container_stop_event.set()
                                 self.close_stream_connecion(container.name)
 
                 except docker.errors.NotFound as e:
-                    logging.error(F"Event-Handler: Container {container} not found: {e}")
+                    self.logger.error(F"Event-Handler: Container {container} not found: {e}")
                 except Exception as e:  
                     if self.shutdown_event.is_set():
                         break
-                    logging.error(f"Event-Handler was stopped {e}. Trying to restart it.")
+                    self.logger.error(f"Event-Handler was stopped {e}. Trying to restart it.")
                     error_count, last_error_time = self.handle_error(error_count, last_error_time)
                     time.sleep(0.3)
                 finally:
                     if self.shutdown_event.is_set():
-                        logging.debug("Event handler is shutting down.")
+                        self.logger.debug("Event handler is shutting down.")
                         break
                     if time.time() - last_error_time > 60:
                         error_count = 0
                     if error_count > 10:
-                        logging.error(f"Error trying to read docker events. Critical error threshold (10) reached.")
+                        self.logger.error(f"Error trying to read docker events. Critical error threshold (10) reached.")
                         break
-                    logging.debug(f"Restarting Event Handler")
-            logging.debug("Event handler stopped.")
+                    self.logger.debug(f"Restarting Event Handler")
+            self.logger.debug("Event handler stopped.")
 
         thread = threading.Thread(target=event_handler, daemon=True)
         self.add_thread(thread)
@@ -370,32 +326,163 @@ class DockerLogMonitor:
         with self.stream_connections_lock:
             for container, _ in self.stream_connections.copy().items():
                 self.close_stream_connecion(container)
-            logging.debug(f"No Log Stream Connections left" if len(self.stream_connections) ==0 else f"{len(self.stream_connections)} Log Stream Connections remaining")
+            self.logger.debug(f"No Log Stream Connections left" if len(self.stream_connections) ==0 else f"{len(self.stream_connections)} Log Stream Connections remaining")
 
         with self.threads_lock:
             alive_threads = []
             for thread in self.threads[::-1]:
-                if isinstance(thread, Observer):
-                    thread.stop()
                 if thread is not threading.current_thread() and thread.is_alive():
                     thread.join(timeout=1.5)
                     if thread.is_alive():
-                        logging.debug(f"Thread {thread.name} could not be stopped")
+                        self.logger.debug(f"Thread {thread.name} could not be stopped")
                         alive_threads.append(thread)
             self.threads = alive_threads
         try:
             self.client.close()
-            logging.info("Shutdown completed")
+            self.logger.info("Shutdown completed")
         except Exception as e:
-            logging.warning(f"Error while trying do close docker client connection during cleanup: {e}")
-        # logging.debug(f"Threads still alive {len(alive_threads)}: {alive_threads}")
-        # logging.debug(f"Threading Enumerate: {threading.enumerate()}")
+            self.logger.warning(f"Error while trying do close docker client connection during cleanup: {e}")
+        # self.logger.debug(f"Threads still alive {len(alive_threads)}: {alive_threads}")
+        self.logger.debug(f"Threading Enumerate: {threading.enumerate()}")
+
+
+def create_handle_signal(monitor_instances, config, config_observer):
+    def handle_signal(signum, frame):
+        if not config.settings.disable_shutdown_message:
+            send_notification(config, "LoggiFly", "LoggiFly", "Shutting down")
+        for monitor in monitor_instances.values():
+            monitor.shutdown_event.set()
+            threading.Thread(target=monitor.cleanup).start()
+        config_observer.stop()
+        config_observer.join()
+
+    return handle_signal
+    
+class ConfigHandler(FileSystemEventHandler):
+    def __init__(self, monitor_instances, config):
+        self.monitor_instances = monitor_instances  
+        self.last_config_reload_time = 0
+        self.config = config
+
+    def on_modified(self, event):
+        if self.config.settings.reload_config and not event.is_directory and event.src_path.endswith('config.yaml'):
+            if time.time() - self.last_config_reload_time < 3:
+                logging.info("Config reload skipped, waiting for 3 seconds")
+                return
+            logging.info("Config change detected, reloading config...")
+            if not self.config.settings.disable_config_reload_message:
+                send_notification(self.config, "Loggifly", "LoggiFly", "Reloading Config...")
+            time.sleep(0.3)  
+            try:
+                self.config = load_config()
+            except ValidationError as e:
+                self.logger.critical(f"Error reloading Config (using old config) {format_pydantic_error(e)}")
+
+            for monitor in self.monitor_instances.values():
+                monitor.reload_config(self.config)
+            self.last_config_reload_time = time.time()  
+
+
+def start_config_watcher(monitor_instances, config):
+    observer = Observer()
+    observer.schedule(ConfigHandler(monitor_instances, config), path="/app/config.yaml", recursive=False)
+    observer.start()
+    return observer
+    
+
+def create_docker_clients():
+    def get_tls_config(hostname):
+        cert_locations = [
+            (os.path.join("/certs", hostname)),   
+            (os.path.join("/certs"))             
+        ]
+
+        for cert_dir in cert_locations:
+            logging.debug(f"Checking TLS certs for {hostname} in {cert_dir}")
+            ca = os.path.join(cert_dir, "ca.pem")
+            cert = os.path.join(cert_dir, "cert.pem")
+            key = os.path.join(cert_dir, "key.pem")
+            
+            if all(os.path.exists(f) for f in [ca, cert, key]):
+                logging.debug(f"Found TLS certs for {hostname} in {cert_dir}")
+                return TLSConfig(client_cert=(cert, key), ca_cert=ca, verify=True)
+        return None
+
+    docker_host = os.environ.get("DOCKER_HOST", "")
+    hosts = [h.strip() for h in docker_host.split(",") if h.strip()]
+    if os.path.exists("/var/run/docker.sock"):
+        hosts.append("unix:///var/run/docker.sock")
+    clients = []
+
+    for host in hosts:
+        logging.debug(f"Creating Docker Client for {host}")
+        parsed = urlparse(host)
+        tls_config = None
+        if parsed.scheme == "unix":
+            pass
+        elif parsed.scheme == "tcp":
+            if parsed.port == 2375:
+                pass
+            elif parsed.port == 2376:
+                hostname = parsed.hostname
+                tls_config = get_tls_config(hostname)
+
+        try:
+            clients.append((docker.DockerClient(base_url=host, tls=tls_config), host))
+        except docker.errors.DockerException as e:
+            logging.error(f"Error creating Docker client for {host}: {e}")
+            continue
+        except Exception as e:
+            logging.error(f"Unexpected error creating Docker client for {host}: {e}")
+            continue
+
+    logging.info(f"Connections to Docker-Clients established for {', '.join([client[1] for client in clients])}"
+                 if len(clients) > 1 else "Connected to Docker Client")
+    return clients
+
+
+def start_loggifly():
+    try:
+        config = load_config()
+    except ValidationError as e:
+        logging.critical(f"Error loading Config: {format_pydantic_error(e)}")
+        logging.info("Waiting 10s to prevent restart loop...")
+        time.sleep(15)
+        sys.exit(1)
+
+    logging.getLogger().setLevel(getattr(logging, config.settings.log_level.upper(), logging.INFO))
+    logging.info(f"Log-Level set to {config.settings.log_level}")
+
+    clients = create_docker_clients()
+    monitor_instances = {}
+    hostname = ""
+    for number, (client, host) in enumerate(clients, start=1):
+        if len(clients) > 1:
+            try:
+                hostname = client.info()["Name"]
+            except Exception as e:
+                hostname = f"Host-{number}"
+                logging.warning(f"Could not get hostname for {host}. LoggiFly will call this host '{hostname}' in notifications and in logging to differentiate it from the other hosts. "
+                                "\nThis error might have been raised because you are using a Socket Proxy without the environment variable 'INFO=1'"
+                                f"\nError details: {e}")
+        logging.info(f"Starting monitoring for {host} {'(' + hostname + ')' if hostname else ''}")
+        monitor = DockerLogMonitor(client, config, hostname)
+        monitor_instances[host] = monitor
+        monitor.start()      
+        
+    config_observer = start_config_watcher(monitor_instances, config)
+    signal.signal(signal.SIGTERM, create_handle_signal(monitor_instances, config, config_observer))
+    signal.signal(signal.SIGINT, create_handle_signal(monitor_instances, config, config_observer))   
+    
+    return monitor_instances
 
 if __name__ == "__main__":
-    monitor = DockerLogMonitor()
+    monitor_instances = start_loggifly()
     try:
-        monitor.start()
-        while not monitor.shutdown_event.is_set():
-            monitor.shutdown_event.wait(2.5)
+        for monitor in monitor_instances.values():
+            monitor.shutdown_event.wait()
     except KeyboardInterrupt:
-        monitor.shutdown_event.set()
+        for monitor in monitor_instances.values():
+            logging.info("KeyboardInterrupt received. Shutting down...")
+            monitor.shutdown_event.set()
+    
