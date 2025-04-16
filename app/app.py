@@ -29,25 +29,25 @@ logging.basicConfig(
 )
 logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)    
 logging.getLogger("docker").setLevel(logging.INFO)
-
+logging.getLogger("watchdog").setLevel(logging.WARNING)
 
 
 class DockerLogMonitor:
     """
-    In this class one thread is startet for every container that is running and set in the config 
-    One thread is started to monitor docker events to watch for new containers and monitored containers that are being stopped.
+    In this class a thread is started for every container that is running and set in the config 
+    One thread is started to monitor docker events to watch for new containers and containers that are being stopped to stop their monitoring.
 
     There are a few collections that are referenced between functions I want to document here:
 
-        - self.line_processor_instances: Dict keyed by container.name, containing a dict with {'container_stop_event': threading event, 'processor' processor instance}
-            - processor is the instance of the LogProcessor class that is used to process the log lines for one container.
-                It is stored to reload the config variables (keywords, settings, etc) when changed. 
-                When a container is stopped and started again the processor instance is reused.
+        - self.line_processor_instances: Dict keyed by container.name, each containing a dict with {'container_stop_event': threading event, 'processor' processor instance}
+            - processor is the instance of the LogProcessor class and is used to process the log lines for one container.
+                It is stored to be able to reload the config variables (keywords, settings, etc) when changed. 
+                When a container is stopped and started again the old processor instance is re-used.
             - container_stop_event is a threading event used to stop all threads that are running to monitor one container including the flush thread in the processor instance
         
-        - self.stream_connections: Dict of log stream connections keyed by container.name (used to close the log stream, effectively stopping the log_monitor thread that is monitoring that container)
+        - self.stream_connections: Dict of log stream connections keyed by container.name (used to close the log stream, effectively stopping the log_monitor thread that is monitoring that container and thus the flush thread)
         
-        - self.monitored_containers: Dict of Docker Container objects that are being monitored keyed by container.id
+        - self.monitored_containers: Dict of Docker Container objects that are currently being monitored keyed by container.id
         
         - self.selected_containers: List of container names that are set in the config
 
@@ -86,7 +86,7 @@ class DockerLogMonitor:
         self.logger.setLevel(getattr(logging, self.config.settings.log_level.upper(), logging.INFO))
         self.selected_containers = [c for c in self.config.containers]
         try:
-            # stop monitoring containers that are not in the config anymore
+            # stop monitoring containers that are no longer in the config
             stop_monitoring = [c for _, c in self.monitored_containers.items() if c.name not in self.selected_containers]
             for c in stop_monitoring:
                 container_stop_event = self.line_processor_instances[c.name]["container_stop_event"]
@@ -95,9 +95,8 @@ class DockerLogMonitor:
                 self.monitored_containers.pop(c.id)
             # reload config variables in the line processor instances to update keywords and other settings
             for container in self.line_processor_instances.keys():
-                if container in self.selected_containers:
-                    processor = self.line_processor_instances[container]["processor"]
-                    processor.load_config_variables(self.config)
+                processor = self.line_processor_instances[container]["processor"]
+                processor.load_config_variables(self.config)
             # start monitoring new containers that are in the config but not monitored yet
             containers_to_monitor = [c for c in self.client.containers.list() if c.name in self.selected_containers and c.id not in self.monitored_containers.keys()]
             for c in containers_to_monitor:

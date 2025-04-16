@@ -266,7 +266,7 @@ class LogProcessor:
                 if ignore_keyword_time or time.time() - self.time_per_keyword.get(regex_keyword) >= int(self.notification_cooldown):
                     if re.search(regex_keyword, log_line, re.IGNORECASE):
                         self.time_per_keyword[regex_keyword] = time.time()
-                        return f"Regex-Pattern: {regex_keyword}"
+                        return f"Regex: {regex_keyword}"
             else:
                 if ignore_keyword_time or time.time() - self.time_per_keyword.get(keyword) >= int(self.notification_cooldown):
                     if str(keyword).lower() in log_line.lower():
@@ -326,7 +326,6 @@ class LogProcessor:
 
     def _log_attachment(self):  
         base_name = f"last_{self.lines_number_attachment}_lines_from_{self.container_name}.log"
-
         def find_available_name(filename, number=1):
             # Create different file name with number if it already exists (in case of many notifications at same time)
             new_name = f"{filename.rsplit('.', 1)[0]}_{number}.log"
@@ -338,7 +337,6 @@ class LogProcessor:
             file_name = find_available_name(base_name)
         else:
             file_name = base_name
-
         try:
             file_name = f"last_{self.lines_number_attachment}_lines_from_{self.container_name}.log"
             log_tail = self.container.logs(tail=self.lines_number_attachment).decode("utf-8")
@@ -349,22 +347,22 @@ class LogProcessor:
             self.logger.error(f"Could not read logs of Container {self.container_name}: {e}")
             return None
 
-    def _send_message(self, message, keyword_list, send_attachment=False, action=None):
 
-        if isinstance(keyword_list, list) and len(keyword_list) == 1:
-            keyword = keyword_list[0]
+    def _send_message(self, message, keywords, send_attachment=False, action=None):
+        if isinstance(keywords, list) and len(keywords) == 1:
+            keyword = keywords[0]
             title = f"'{keyword}' found in {self.container.name}"
-        elif isinstance(keyword_list, list) and len(keyword_list) > 2:
-            joined_keywords = ', '.join(f"'{word}'" for word in keyword_list)
+        elif isinstance(keywords, list) and len(keywords) > 2:
+            joined_keywords = ', '.join(f"'{word}'" for word in keywords)
             title = f"The following keywords were found in {self.container.name}: {joined_keywords}"
-        elif isinstance(keyword_list, list) and len(keyword_list) == 2:
-            joined_keywords = ' and '.join(f"'{word}'" for word in keyword_list)
+        elif isinstance(keywords, list) and len(keywords) == 2:
+            joined_keywords = ' and '.join(f"'{word}'" for word in keywords)
             title = f"{joined_keywords} found in {self.container.name}"
         else:
             title = f"{self.container.name}"
 
-        if isinstance(keyword_list, str):
-            keyword = keyword_list
+        if isinstance(keywords, str):
+            keyword = keywords
         if action:
             title = f"{'Stopping' if action == 'stop' else 'Restarting'} {self.container.name} because '{keyword}' was found"
 
