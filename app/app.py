@@ -1,4 +1,3 @@
-import logging.config
 import os
 import logging
 import docker
@@ -34,8 +33,29 @@ logging.getLogger("docker").setLevel(logging.INFO)
 
 
 class DockerLogMonitor:
+    """
+    In this class one thread is startet for every container that is running and set in the config 
+    One thread is started to monitor docker events to watch for new containers and monitored containers that are being stopped.
+
+    There are a few collections that are referenced between functions I want to document here:
+
+        - self.line_processor_instances: Dict keyed by container.name, containing a dict with {'container_stop_event': threading event, 'processor' processor instance}
+            - processor is the instance of the LogProcessor class that is used to process the log lines for one container.
+                It is stored to reload the config variables (keywords, settings, etc) when changed. 
+                When a container is stopped and started again the processor instance is reused.
+            - container_stop_event is a threading event used to stop all threads that are running to monitor one container including the flush thread in the processor instance
+        
+        - self.stream_connections: Dict of log stream connections keyed by container.name (used to close the log stream, effectively stopping the log_monitor thread that is monitoring that container)
+        
+        - self.monitored_containers: Dict of Docker Container objects that are being monitored keyed by container.id
+        
+        - self.selected_containers: List of container names that are set in the config
+
+        - self.threads: List of threads that are started to monitor container logs and docker events
+
+    """
     def __init__(self, client, config, hostname):
-        self.hostname = hostname  # empty string if only one client else the hostname of the client 
+        self.hostname = hostname  # empty string if only one client is being monitored, otherwise the hostname of the client 
         self.config = config
         
         self.logger = logging.getLogger(f"Monitor-{self.hostname}")
@@ -64,20 +84,21 @@ class DockerLogMonitor:
     def reload_config(self, config):
         self.config = config
         self.logger.setLevel(getattr(logging, self.config.settings.log_level.upper(), logging.INFO))
+        self.selected_containers = [c for c in self.config.containers]
         try:
-            self.selected_containers = [c for c in self.config.containers]
+            # stop monitoring containers that are not in the config anymore
             stop_monitoring = [c for _, c in self.monitored_containers.items() if c.name not in self.selected_containers]
             for c in stop_monitoring:
                 container_stop_event = self.line_processor_instances[c.name]["container_stop_event"]
                 container_stop_event.set()
                 self.close_stream_connecion(c.name)
                 self.monitored_containers.pop(c.id)
-
+            # reload config variables in the line processor instances to update keywords and other settings
             for container in self.line_processor_instances.keys():
                 if container in self.selected_containers:
                     processor = self.line_processor_instances[container]["processor"]
                     processor.load_config_variables(self.config)
-
+            # start monitoring new containers that are in the config but not monitored yet
             containers_to_monitor = [c for c in self.client.containers.list() if c.name in self.selected_containers and c.id not in self.monitored_containers.keys()]
             for c in containers_to_monitor:
                 self.logger.info(f"New Container to monitor: {c.name}")
@@ -159,6 +180,8 @@ class DockerLogMonitor:
             self.logger.info(f"Monitoring for Container started: {container.name}")
             error_count = 0
             last_error_time = time.time()  
+
+            # re-use old line processor instance if it exists, otherwise create a new one
             if container.name in self.line_processor_instances:
                 self.logger.debug(f"{container.name}: Re-Using old line processor")    
                 processor, container_stop_event = self.line_processor_instances[container.name]["processor"], self.line_processor_instances[container.name]["container_stop_event"]
@@ -167,6 +190,7 @@ class DockerLogMonitor:
                 container_stop_event = threading.Event()
                 processor = LogProcessor(self.logger, self.hostname, self.config, container, container_stop_event)
                 self.add_processor_instance(processor, container_stop_event, container.name)
+
             container_stop_event.clear()
             while not self.shutdown_event.is_set() and not container_stop_event.is_set():
                 buffer = b""
@@ -228,8 +252,8 @@ class DockerLogMonitor:
                     # if there are more than 5 errors in one minute the while loop stops
                     if time.time() - last_error_time > 60:
                         error_count = 0
-                    if error_count > 5:
-                        self.logger.error(f"Error trying to establish Log Stream for {container.name}. Critical error threshold (6) reached.")
+                    if error_count > 10:
+                        self.logger.error(f"Error trying to establish Log Stream for {container.name}. Critical error threshold (10) reached.")
                         log_stream.close()  
                         container_stop_event.set() # to stop flush threads in the line processor instances
                         break
@@ -241,7 +265,7 @@ class DockerLogMonitor:
         self.add_thread(thread)
         thread.start()
 
-
+    # This function is called from outside this class to start the monitoring of one host and its containers
     def start(self):
         running_containers = self.client.containers.list()
         containers_to_monitor = [c for c in running_containers if c.name in self.selected_containers]
@@ -271,6 +295,11 @@ class DockerLogMonitor:
 
 
     def watch_events(self):
+        """
+        When a new selected container is started the monitor_container function is called to start monitoring it.
+        When a selected container is stopped the stream connection is closed (causing the threads associated with it to stop) 
+        and the container is removed from the monitored containers.
+        """
         def event_handler():
             error_count = 0
             last_error_time = time.time()
@@ -322,7 +351,12 @@ class DockerLogMonitor:
         thread.start()
     
 
-    def cleanup(self):      
+    def cleanup(self):    
+        """
+        This function is called when the program is shutting down. 
+        By closing the stream connections the log stream which is blocked until the next log line gets released allowing the threads to fninish.
+        The only thread that can not easily be stopped is the event_handler, because it is is blocked.
+        """  
         with self.stream_connections_lock:
             for container, _ in self.stream_connections.copy().items():
                 self.close_stream_connecion(container)
@@ -343,7 +377,7 @@ class DockerLogMonitor:
         except Exception as e:
             self.logger.warning(f"Error while trying do close docker client connection during cleanup: {e}")
         # self.logger.debug(f"Threads still alive {len(alive_threads)}: {alive_threads}")
-        self.logger.debug(f"Threading Enumerate: {threading.enumerate()}")
+        # self.logger.debug(f"Threading Enumerate: {threading.enumerate()}")
 
 
 def create_handle_signal(monitor_instances, config, config_observer):
@@ -359,6 +393,11 @@ def create_handle_signal(monitor_instances, config, config_observer):
     return handle_signal
     
 class ConfigHandler(FileSystemEventHandler):
+    """
+    When a config.yaml change is detected, the reload_config method is called on each host's DockerLogMonitor instance.
+    This method then updates all LogProcessor instances (from line_processor.py) by calling their load_config_variables function.
+    This ensures that any new keywords, settings, or other configuration changes are correctly applied especiaööy in the code that handles keyword searching in line_processor.py.    
+    """
     def __init__(self, monitor_instances, config):
         self.monitor_instances = monitor_instances  
         self.last_config_reload_time = 0
@@ -391,6 +430,11 @@ def start_config_watcher(monitor_instances, config):
     
 
 def create_docker_clients():
+    """
+    This function creates Docker clients for all hosts specified in the DOCKER_HOST environment variables + the mounted docker socket.
+    When the port 2376 is used TLS certificates are searched in '/certs/{host}' (to use in case of multiple hosts) and '/certs' 
+    with host being the IP or FQDN of the host.
+    """
     def get_tls_config(hostname):
         cert_locations = [
             (os.path.join("/certs", hostname)),   

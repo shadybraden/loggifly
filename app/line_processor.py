@@ -266,7 +266,7 @@ class LogProcessor:
                 if ignore_keyword_time or time.time() - self.time_per_keyword.get(regex_keyword) >= int(self.notification_cooldown):
                     if re.search(regex_keyword, log_line, re.IGNORECASE):
                         self.time_per_keyword[regex_keyword] = time.time()
-                        return f"regex: {regex_keyword}"
+                        return f"Regex-Pattern: {regex_keyword}"
             else:
                 if ignore_keyword_time or time.time() - self.time_per_keyword.get(keyword) >= int(self.notification_cooldown):
                     if str(keyword).lower() in log_line.lower():
@@ -317,7 +317,7 @@ class LogProcessor:
                     action = ("restart") if found else None
                 if found:
                     formatted_log_entry ="\n  -----  LOG-ENTRY  -----\n" + ' | ' + '\n | '.join(log_line.splitlines()) + "\n   -----------------------"
-                    self.logger.info(f"{'Stopping' if action == 'stop' else 'Restarting'} {self.container_name} because Keyword: {found} was found in {formatted_log_entry}")
+                    self.logger.info(f"{'Stopping' if action == 'stop' else 'Restarting'} {self.container_name} because {found} was found in {formatted_log_entry}")
                     self._send_message(log_line, found, send_attachment=False, action=action)
                     self._container_action(action, log_line, found)
                     self.last_action_time = time.time()
@@ -352,7 +352,7 @@ class LogProcessor:
     def _send_message(self, message, keyword_list, send_attachment=False, action=None):
 
         if isinstance(keyword_list, list) and len(keyword_list) == 1:
-            keyword = keyword_list[0] if "regex" not in keyword_list[0] else "Regex-Pattern: " + "'" + keyword_list[0].split(":")[1] 
+            keyword = keyword_list[0]
             title = f"'{keyword}' found in {self.container.name}"
         elif isinstance(keyword_list, list) and len(keyword_list) > 2:
             joined_keywords = ', '.join(f"'{word}'" for word in keyword_list)
@@ -364,10 +364,9 @@ class LogProcessor:
             title = f"{self.container.name}"
 
         if isinstance(keyword_list, str):
-            keyword = keyword_list if "regex" not in keyword_list else "Regex-Pattern: " + "'" + keyword_list.split(":")[1] 
+            keyword = keyword_list
         if action:
-            title = f"{'Stopping' if action == 'stop' else 'Restarting'} {self.container.name} because keyword '{keyword}' was found"
-
+            title = f"{'Stopping' if action == 'stop' else 'Restarting'} {self.container.name} because '{keyword}' was found"
 
         if send_attachment:
             file_name = self._log_attachment()

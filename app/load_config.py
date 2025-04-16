@@ -17,9 +17,9 @@ logging.getLogger(__name__)
 
 """ 
 this may look unnecessarily complicated but I wanted to learn and use pydantic 
-I didn't manage to use pydantic with environment variables the way I wanted. 
-I needed env to override yaml data and yaml to override default values and I could not get it to work 
-so now I first load the yaml and the environment variables, merge them and then I validate the data with pydantic
+I didn't manage to use pydantic's integrated environment variable loading
+because I needed env to override yaml data and yaml to override default values and I could not get it to work.
+So now I first load the yaml config and the environment variables, merge them and then I validate the merged config with pydantic
 """
 
 class BaseConfigModel(BaseModel):
@@ -235,7 +235,7 @@ def mask_secret_str(data):
     elif isinstance(data, list):
         return [mask_secret_str(item) for item in data]
     elif isinstance(data, SecretStr):
-        return "*****"  
+        return "**********"  
     else:
         return data
 
@@ -251,6 +251,10 @@ def merge_yaml_and_env(yaml, env_update):
 
 
 def load_config(path="/config/config.yaml"):
+    """
+    Load the configuration from a YAML file and environment variables.
+    The config.yaml is expected in /config/config.yaml or /app/config.yaml (older version)
+    """
     config_file = False
     required_keys = ["containers", "notifications", "settings", "global_keywords"]
     yaml_config = {}
@@ -271,7 +275,6 @@ def load_config(path="/config/config.yaml"):
         else:
             logging.info(f"The path {path} does not exist.")
     logging.warning(f"The config.yaml file was not found. Only using environment variables.") if not config_file else logging.info(f"The config.yaml file was found in {path}.")
-   # logging.info(f"YAML CONFIG: {yaml_config}")
     if yaml_config is None:
         yaml_config = {}
     for key in required_keys:
@@ -308,6 +311,7 @@ def load_config(path="/config/config.yaml"):
         "keywords": [kw.strip() for kw in os.getenv("GLOBAL_KEYWORDS", "").split(",") if kw.strip()] if os.getenv("GLOBAL_KEYWORDS") else [],
         "keywords_with_attachment": [kw.strip() for kw in os.getenv("GLOBAL_KEYWORDS_WITH_ATTACHMENT", "").split(",") if kw.strip()] if os.getenv("GLOBAL_KEYWORDS_WITH_ATTACHMENT") else [],
     }
+    # Fill env_config dict with environment variables if they are set
     if os.getenv("CONTAINERS"):
         for c in os.getenv("CONTAINERS", "").split(","):
             c = c.strip()
@@ -324,12 +328,15 @@ def load_config(path="/config/config.yaml"):
     for key, value in settings_values.items(): 
         if value is not None:
             env_config["settings"][key] = value
+
+    # Merge environment variables and yaml config
     merged_config = merge_yaml_and_env(yaml_config, env_config)
+    # Validate the merged configuration with Pydantic
     config = GlobalConfig.model_validate(merged_config)
+
     config_dict = mask_secret_str(config.model_dump(exclude_none=True, exclude_defaults=False, exclude_unset=False))
     yaml_output = yaml.dump(config_dict, default_flow_style=False, sort_keys=False, indent=4)
     logging.info(f"\n ------------- CONFIG ------------- \n{yaml_output}\n ----------------------------------")
 
-   # logging.info(f"\n ------------- CONFIG ------------- \n{config.model_dump_json(indent=2, exclude_none=True)}\n ----------------------------------")
     return config
 
