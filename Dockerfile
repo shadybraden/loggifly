@@ -15,6 +15,4 @@ COPY app/notifier.py .
 COPY app/app.py .
 COPY app/line_processor.py .
 
-RUN chmod +x entrypoint.sh
-
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["/bin/sh", "./entrypoint.sh"]
