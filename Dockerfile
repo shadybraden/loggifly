@@ -13,6 +13,7 @@ COPY entrypoint.sh .
 COPY app/load_config.py .
 COPY app/notifier.py .
 COPY app/app.py .
+COPY app/docker_monitor.py .
 COPY app/line_processor.py .
 
 ENTRYPOINT ["/bin/sh", "./entrypoint.sh"]
