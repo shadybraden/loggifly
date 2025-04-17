@@ -394,8 +394,9 @@ def create_handle_signal(monitor_instances, config, config_observer):
         for monitor in monitor_instances.values():
             monitor.shutdown_event.set()
             threading.Thread(target=monitor.cleanup).start()
-        config_observer.stop()
-        config_observer.join()
+        if config_observer is not None:
+            config_observer.stop()
+            config_observer.join()
 
     return handle_signal
     
@@ -472,11 +473,8 @@ def create_docker_clients():
         if parsed.scheme == "unix":
             pass
         elif parsed.scheme == "tcp":
-            if parsed.port == 2375:
-                pass
-            elif parsed.port == 2376:
-                hostname = parsed.hostname
-                tls_config = get_tls_config(hostname)
+            hostname = parsed.hostname
+            tls_config = get_tls_config(hostname)
 
         try:
             clients.append((docker.DockerClient(base_url=host, tls=tls_config), host))
@@ -519,9 +517,14 @@ def start_loggifly():
         logging.info(f"Starting monitoring for {host} {'(' + hostname + ')' if hostname else ''}")
         monitor = DockerLogMonitor(client, config, hostname)
         monitor_instances[host] = monitor
-        monitor.start()      
-        
-    config_observer = start_config_watcher(monitor_instances, config, path)
+        monitor.start()    
+    
+    if isinstance(path, str) and os.path.exists(path):
+        config_observer = start_config_watcher(monitor_instances, config, path)
+    else:
+        logging.debug("Config watcher is not started because no valid config path exist.")
+        config_observer = None
+
     signal.signal(signal.SIGTERM, create_handle_signal(monitor_instances, config, config_observer))
     signal.signal(signal.SIGINT, create_handle_signal(monitor_instances, config, config_observer))   
     
