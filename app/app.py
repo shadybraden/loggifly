@@ -420,7 +420,7 @@ class ConfigHandler(FileSystemEventHandler):
                 send_notification(self.config, "Loggifly", "LoggiFly", "Reloading Config...")
             time.sleep(0.3)  
             try:
-                self.config = load_config()
+                self.config, _ = load_config()
             except ValidationError as e:
                 self.logger.critical(f"Error reloading Config (using old config) {format_pydantic_error(e)}")
 
@@ -429,9 +429,9 @@ class ConfigHandler(FileSystemEventHandler):
             self.last_config_reload_time = time.time()  
 
 
-def start_config_watcher(monitor_instances, config):
+def start_config_watcher(monitor_instances, config, path):
     observer = Observer()
-    observer.schedule(ConfigHandler(monitor_instances, config), path="/app/config.yaml", recursive=False)
+    observer.schedule(ConfigHandler(monitor_instances, config), path=path, recursive=False)
     observer.start()
     return observer
     
@@ -494,7 +494,7 @@ def create_docker_clients():
 
 def start_loggifly():
     try:
-        config = load_config()
+        config, path = load_config()
     except ValidationError as e:
         logging.critical(f"Error loading Config: {format_pydantic_error(e)}")
         logging.info("Waiting 15s to prevent restart loop...")
@@ -521,7 +521,7 @@ def start_loggifly():
         monitor_instances[host] = monitor
         monitor.start()      
         
-    config_observer = start_config_watcher(monitor_instances, config)
+    config_observer = start_config_watcher(monitor_instances, config, path)
     signal.signal(signal.SIGTERM, create_handle_signal(monitor_instances, config, config_observer))
     signal.signal(signal.SIGINT, create_handle_signal(monitor_instances, config, config_observer))   
     

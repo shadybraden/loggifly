@@ -255,7 +255,7 @@ def load_config(official_path="/config/config.yaml"):
     Load the configuration from a YAML file and environment variables.
     The config.yaml is expected in /config/config.yaml or /app/config.yaml (older version)
     """
-    config_file = False
+    config_path = None
     required_keys = ["containers", "notifications", "settings", "global_keywords"]
     yaml_config = None
     legacy_path = "/app/config.yaml"
@@ -266,7 +266,7 @@ def load_config(official_path="/config/config.yaml"):
             try:
                 with open(path, "r") as file:
                     yaml_config = yaml.safe_load(file)
-                    config_file = True
+                    config_path = path
                     break
             except FileNotFoundError:
                 logging.info(f"Error loading the config.yaml file from {path}")
@@ -295,7 +295,7 @@ def load_config(official_path="/config/config.yaml"):
         "attachment_lines": os.getenv("ATTACHMENT_LINES"),
         "multi_line_entries": os.getenv("MULTI_LINE_ENTRIES"),
         "notification_cooldown": os.getenv("NOTIFICATION_COOLDOWN"),
-        "reload_config": False if not config_file else os.getenv("RELOAD_CONFIG"), 
+        "reload_config": False if config_path is None else os.getenv("RELOAD_CONFIG"), 
         "disable_start_message": os.getenv("DISABLE_START_MESSAGE"),
         "disable_restart_message": os.getenv("DISABLE_CONFIG_RELOAD_MESSAGE"),
         "disable_shutdown_message": os.getenv("DISABLE_SHUTDOWN_MESSAGE"),
@@ -344,5 +344,5 @@ def load_config(official_path="/config/config.yaml"):
     yaml_output = yaml.dump(config_dict, default_flow_style=False, sort_keys=False, indent=4)
     logging.info(f"\n ------------- CONFIG ------------- \n{yaml_output}\n ----------------------------------")
 
-    return config
+    return config, config_path
 
