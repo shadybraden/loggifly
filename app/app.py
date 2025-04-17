@@ -461,12 +461,20 @@ def create_docker_clients():
         return None
 
     docker_host = os.environ.get("DOCKER_HOST", "")
-    hosts = [h.strip() for h in docker_host.split(",") if h.strip()]
+    tmp_hosts = [h.strip() for h in docker_host.split(",") if h.strip()]
+    hosts = []
+    for host in tmp_hosts:
+        label = None
+        if "|" in host:
+            host, label = host.split("|", 1)
+        hosts.append((host, label.strip()) if label else (host.strip(), None))
+
     if os.path.exists("/var/run/docker.sock"):
         hosts.append("unix:///var/run/docker.sock")
+
     clients = []
 
-    for host in hosts:
+    for host, label in hosts:
         logging.debug(f"Creating Docker Client for {host}")
         parsed = urlparse(host)
         tls_config = None
@@ -477,7 +485,7 @@ def create_docker_clients():
             tls_config = get_tls_config(hostname)
 
         try:
-            clients.append((docker.DockerClient(base_url=host, tls=tls_config), host))
+            clients.append((docker.DockerClient(base_url=host, tls=tls_config), host, label))
         except docker.errors.DockerException as e:
             logging.error(f"Error creating Docker client for {host}: {e}")
             continue
@@ -505,15 +513,17 @@ def start_loggifly():
     clients = create_docker_clients()
     monitor_instances = {}
     hostname = ""
-    for number, (client, host) in enumerate(clients, start=1):
+    for number, (client, host, label) in enumerate(clients, start=1):
         if len(clients) > 1:
             try:
-                hostname = client.info()["Name"]
+                hostname = label if label else client.info()["Name"]
             except Exception as e:
                 hostname = f"Host-{number}"
-                logging.warning(f"Could not get hostname for {host}. LoggiFly will call this host '{hostname}' in notifications and in logging to differentiate it from the other hosts. "
-                                "\nThis error might have been raised because you are using a Socket Proxy without the environment variable 'INFO=1'"
-                                f"\nError details: {e}")
+                logging.warning(f"Could not get hostname for {host}. LoggiFly will call this host '{hostname}' in notifications and in logging to differentiate it from the other hosts."
+                    f"\nThis error might have been raised because you are using a Socket Proxy without the environment variable 'INFO=1'"
+                    f"\nYou can also set a label for the docker host in the DOCKER_HOST environment variable like this: 'tcp://host:2375|label' to use instead of the hostname."
+                    f"\nError details: {e}")    
+                                
         logging.info(f"Starting monitoring for {host} {'(' + hostname + ')' if hostname else ''}")
         monitor = DockerLogMonitor(client, config, hostname)
         monitor_instances[host] = monitor
