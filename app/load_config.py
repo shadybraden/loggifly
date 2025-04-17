@@ -250,33 +250,39 @@ def merge_yaml_and_env(yaml, env_update):
     return yaml
 
 
-def load_config(path="/config/config.yaml"):
+def load_config(official_path="/config/config.yaml"):
     """
     Load the configuration from a YAML file and environment variables.
     The config.yaml is expected in /config/config.yaml or /app/config.yaml (older version)
     """
     config_file = False
     required_keys = ["containers", "notifications", "settings", "global_keywords"]
-    yaml_config = {}
-    old_path = "/app/config.yaml"
-    paths = [path, old_path]
+    yaml_config = None
+    legacy_path = "/app/config.yaml"
+    paths = [official_path, legacy_path]
     for path in paths: 
         logging.info(f"Trying path: {path}")
         if os.path.isfile(path):
             try:
                 with open(path, "r") as file:
                     yaml_config = yaml.safe_load(file)
-                #  logging.info(f"YAML CONFIG: {yaml_config}")
-                    #logging.info("config.yaml succesfully loaded.")
                     config_file = True
                     break
             except FileNotFoundError:
                 logging.info(f"Error loading the config.yaml file from {path}")
+            except yaml.YAMLError as e:
+                logging.error(f"Error parsing the YAML file: {e}")
+            except Exception as e:
+                logging.error(f"Unexpected error loading the config.yaml file: {e}")
         else:
             logging.info(f"The path {path} does not exist.")
-    logging.warning(f"The config.yaml file was not found. Only using environment variables.") if not config_file else logging.info(f"The config.yaml file was found in {path}.")
+
     if yaml_config is None:
+        logging.warning(f"The config.yaml file was not found. Only using environment variables.")
         yaml_config = {}
+    else:
+        logging.info(f"The config.yaml file was found in {path}.")
+
     for key in required_keys:
         if key not in yaml_config or yaml_config[key] is None:
             yaml_config[key] = {}

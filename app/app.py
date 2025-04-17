@@ -35,17 +35,16 @@ logging.getLogger("watchdog").setLevel(logging.WARNING)
 class DockerLogMonitor:
     """
     In this class a thread is started for every container that is running and set in the config 
-    One thread is started to monitor docker events to watch for new containers and containers that are being stopped to stop their monitoring.
-
+    One thread is started to monitor docker events to watch for container starts/stops to start or stop the monitoring of containers.
     There are a few collections that are referenced between functions I want to document here:
 
-        - self.line_processor_instances: Dict keyed by container.name, each containing a dict with {'container_stop_event': threading event, 'processor' processor instance}
-            - processor is the instance of the LogProcessor class and is used to process the log lines for one container.
-                It is stored to be able to reload the config variables (keywords, settings, etc) when changed. 
+        - self.line_processor_instances: Dict keyed by container.name, each containing a dict with {'processor' processor, 'container_stop_event': container_stop_event}
+            - processor is an instance of the LogProcessor class (line_processor.py) and is gets fed the log lines from the container one by one to search for keywords among other things.
+                It is stored so that the reload_config_variables function can be called to update keywords, settings, etc when the config.yaml changes. 
                 When a container is stopped and started again the old processor instance is re-used.
-            - container_stop_event is a threading event used to stop all threads that are running to monitor one container including the flush thread in the processor instance
+            - container_stop_event is a threading event used to stop the threads that are running to monitor one container (log_monitor (with log stream and flush thread)
         
-        - self.stream_connections: Dict of log stream connections keyed by container.name (used to close the log stream, effectively stopping the log_monitor thread that is monitoring that container and thus the flush thread)
+        - self.stream_connections: Dict of log stream connections keyed by container.name (effectively releasing the blocking log stream allowing the threads to stop)
         
         - self.monitored_containers: Dict of Docker Container objects that are currently being monitored keyed by container.id
         
@@ -55,9 +54,10 @@ class DockerLogMonitor:
 
     """
     def __init__(self, client, config, hostname):
-        self.hostname = hostname  # empty string if only one client is being monitored, otherwise the hostname of the client 
+        self.hostname = hostname  # empty string if only one client is being monitored, otherwise the hostname of the client do differentiate between the hosts
         self.config = config
         
+        # set up logging (hostname is added when there are multiple hosts)
         self.logger = logging.getLogger(f"Monitor-{self.hostname}")
         self.logger.handlers.clear()
         handler = logging.StreamHandler()
@@ -140,18 +140,34 @@ class DockerLogMonitor:
                 stream.close()
                 self.stream_connections.pop(container_name)
             except Exception as e:
-                self.logger.warning(f"Error trying do close stream during cleanup: {e}")
+                self.logger.warning(f"Error trying do close log stream for {container_name}: {e}")
         else:
             self.logger.debug(f"Could not find log stream connection for container {container_name}")
 
 
-    def handle_error(self, error_count, last_error_time):
-            new_count = error_count + 1
-            current_time = time.time()
-            if current_time - last_error_time > 180:
-                new_count = 1
-            return new_count, current_time
-    
+    def handle_error(self, error_count, last_error_time, container_name=None, container_stop_event=None, log_stream=None):
+        """
+        Error handling for the event handler and the log stream threads.
+        If there are more than 10 errors in a minute the thread is stopped.
+        """
+        MAX_ERRORS = 10
+        ERROR_WINDOW = 60.0  
+        now = time.time()
+        error_count = 0 if now - last_error_time > ERROR_WINDOW else error_count + 1
+        last_error_time = now
+
+        if error_count > MAX_ERRORS:
+            if container_name:
+                self.logger.error(f"Too many errors for {container_name}. Count: {error_count}")
+                container_stop_event.set()
+                log_stream.close()
+            else:
+                self.logger.error(f"Too many errors for Docker Event Handler. Count: {error_count}")
+            return error_count, last_error_time, True  # True = break needed
+
+        time.sleep(random.uniform(0.1, 1)) # to prevent all threads from trying to reconnect at the same time
+        return error_count, last_error_time, False    
+
 
     def monitor_container(self, container):    
         def check_container(container_start_time):
@@ -192,6 +208,7 @@ class DockerLogMonitor:
 
             container_stop_event.clear()
             while not self.shutdown_event.is_set() and not container_stop_event.is_set():
+                should_break = False
                 buffer = b""
                 try:
                     now = datetime.now()
@@ -220,17 +237,16 @@ class DockerLogMonitor:
 
                 except docker.errors.NotFound as e:
                     self.logger.error(f"Container {container} during Log Stream: {e}")
-                    error_count, last_error_time = self.handle_error(error_count, last_error_time) 
-                    time.sleep(random.uniform(0.1, 0.8)) # to prevent all threads trying to reconnect at the same time when there are connection problems (especially with a proxy)
-                except docker.errors.APIError as e:
-                    error_count, last_error_time = self.handle_error(error_count, last_error_time)
-                    time.sleep(random.uniform(0.1, 0.8))
+                    error_count, last_error_time, should_break = self.handle_error(
+                        error_count, last_error_time, container.name, container_stop_event, log_stream
+                    )
                 except Exception as e:
                     self.logger.error("Error trying to monitor %s: %s", container.name, e)
                     self.logger.error("Error details: %s", str(e.__class__.__name__))
                     #self.logger.debug(traceback.format_exc())
-                    error_count, last_error_time = self.handle_error(error_count, last_error_time)
-                    time.sleep(random.uniform(0.1, 0.8))
+                    error_count, last_error_time, should_break = self.handle_error(
+                        error_count, last_error_time, container.name, container_stop_event, log_stream
+                    )
                 finally:
                     if self.shutdown_event.is_set() or container_stop_event.is_set():   
                         try:
@@ -238,23 +254,16 @@ class DockerLogMonitor:
                             log_stream.close()  
                         except Exception as e:
                             self.logger.debug(f"{container.name}: Error closing stream: Container {str(e)}")
-                        finally:
-                            break
+                        break
                     if not check_container(container_start_time):
                         self.logger.debug(f"{container.name} is not running or was restarted. Getting rid of old thread")
                         try:
                             log_stream.close()
                         except Exception as e:
                             self.logger.error(f"Could not close Log Stream for container {container.name}")
-                        finally:
-                            break
-                    # if there are more than 5 errors in one minute the while loop stops
-                    if time.time() - last_error_time > 60:
-                        error_count = 0
-                    if error_count > 10:
-                        self.logger.error(f"Error trying to establish Log Stream for {container.name}. Critical error threshold (10) reached.")
-                        log_stream.close()  
-                        container_stop_event.set() # to stop flush threads in the line processor instances
+                        break
+                    # if there are more too many errors the while loop stops
+                    if should_break:
                         break
                     self.logger.info(f"{container.name}: Log Stream stopped. Reconnecting...")
             self.logger.info(f"{container.name}: Monitoring stopped for container.")
@@ -305,6 +314,7 @@ class DockerLogMonitor:
             while not self.shutdown_event.is_set():
                 self.logger.info("Event Handler started. Watching for new containers...")
                 now = time.time()
+                should_break = False
                 try: 
                     for event in self.client.events(decode=True, filters={"event": ["start", "stop"]}, since=now):
                         if self.shutdown_event.is_set():
@@ -331,16 +341,14 @@ class DockerLogMonitor:
                     if self.shutdown_event.is_set():
                         break
                     self.logger.error(f"Event-Handler was stopped {e}. Trying to restart it.")
-                    error_count, last_error_time = self.handle_error(error_count, last_error_time)
-                    time.sleep(0.3)
+                    error_count, last_error_time, should_break = self.handle_error(error_count, last_error_time)
                 finally:
                     if self.shutdown_event.is_set():
                         self.logger.debug("Event handler is shutting down.")
                         break
                     if time.time() - last_error_time > 60:
                         error_count = 0
-                    if error_count > 10:
-                        self.logger.error(f"Error trying to read docker events. Critical error threshold (10) reached.")
+                    if should_break:
                         break
                     self.logger.debug(f"Restarting Event Handler")
             self.logger.debug("Event handler stopped.")
@@ -353,7 +361,7 @@ class DockerLogMonitor:
     def cleanup(self):    
         """
         This function is called when the program is shutting down. 
-        By closing the stream connections the log stream which is blocked until the next log line gets released allowing the threads to fninish.
+        By closing the stream connections the log stream which would otherwise be blocked until the next log line gets released allowing the threads to fninish.
         The only thread that can not easily be stopped is the event_handler, because it is is blocked.
         """  
         with self.stream_connections_lock:
@@ -431,8 +439,8 @@ def start_config_watcher(monitor_instances, config):
 def create_docker_clients():
     """
     This function creates Docker clients for all hosts specified in the DOCKER_HOST environment variables + the mounted docker socket.
-    When the port 2376 is used TLS certificates are searched in '/certs/{host}' (to use in case of multiple hosts) and '/certs' 
-    with host being the IP or FQDN of the host.
+    When the port 2376 is used TLS certificates are searched in '/certs/{ca,cert,key}'.pem 
+    or '/certs/{host}/{ca,cert,key}.pem' (to use in case of multiple hosts) with {host} being the IP or FQDN of the host.
     """
     def get_tls_config(hostname):
         cert_locations = [
@@ -489,7 +497,7 @@ def start_loggifly():
         config = load_config()
     except ValidationError as e:
         logging.critical(f"Error loading Config: {format_pydantic_error(e)}")
-        logging.info("Waiting 10s to prevent restart loop...")
+        logging.info("Waiting 15s to prevent restart loop...")
         time.sleep(15)
         sys.exit(1)
 
