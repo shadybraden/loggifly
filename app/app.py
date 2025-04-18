@@ -37,6 +37,9 @@ def create_handle_signal(monitor_instances, config, config_observer):
     def handle_signal(signum, frame):
         if not config.settings.disable_shutdown_message:
             send_notification(config, "LoggiFly", "LoggiFly", "Shutting down")
+        if config_observer is not None:
+            config_observer.stop()
+            config_observer.join()
         threads = []
         for monitor in monitor_instances:
             monitor.shutdown_event.set()
@@ -45,13 +48,11 @@ def create_handle_signal(monitor_instances, config, config_observer):
             thread.start()
         for thread in threads:
             thread.join(timeout=2)    
-        if config_observer is not None:
-            config_observer.stop()
-            config_observer.join()
         global_shutdown_event.set()
 
     return handle_signal, global_shutdown_event
     
+
 class ConfigHandler(FileSystemEventHandler):
     """
     When a config.yaml change is detected, the reload_config method is called on each host's DockerLogMonitor instance.
@@ -101,16 +102,15 @@ def check_monitor_status(docker_hosts, global_shutdown_event):
     """
     def check_and_reconnect():
         while True:
-            if global_shutdown_event.is_set():
-                return
             time.sleep(60)
-            if global_shutdown_event.is_set():
-                return
             for host, values in docker_hosts.items():
-                tls_config, label, monitor = values["tls_config"], values["label"], values["monitor"]
+                monitor = values["monitor"]
                 if monitor.shutdown_event.is_set():
                     while monitor.cleanup_event.is_set():
                         time.sleep(1)
+                    if global_shutdown_event.is_set():
+                        return
+                    tls_config, label = values["tls_config"], values["label"]
                     new_client = None
                     try:    
                         new_client = docker.DockerClient(base_url=host, tls=tls_config)
@@ -132,7 +132,7 @@ def check_monitor_status(docker_hosts, global_shutdown_event):
 def create_docker_clients() -> dict[str, dict[str, Any]]: # {host: {client: DockerClient, tls_config: TLSConfig, label: str}}
     """
     This function creates Docker clients for all hosts specified in the DOCKER_HOST environment variables + the mounted docker socket.
-    When the port 2376 is used TLS certificates are searched in '/certs/{ca,cert,key}'.pem 
+    TLS certificates are searched in '/certs/{ca,cert,key}'.pem 
     or '/certs/{host}/{ca,cert,key}.pem' (to use in case of multiple hosts) with {host} being the IP or FQDN of the host.
     """
     def get_tls_config(hostname):
@@ -161,7 +161,7 @@ def create_docker_clients() -> dict[str, dict[str, Any]]: # {host: {client: Dock
             host, label = host.split("|", 1)
         hosts.append((host, label.strip()) if label else (host.strip(), None))
 
-    if os.path.exists("/var/run/docker.sock"):
+    if os.path.exists("/var/run/docker.sock") and not any(h[0] == "unix://var/run/docker.sock" for h in hosts):
         hosts.append(("unix:///var/run/docker.sock", None)) 
 
     docker_hosts = {host: {} for host, _ in hosts}
@@ -217,7 +217,7 @@ def start_loggifly():
                     f"\nError details: {e}")    
                                 
         logging.info(f"Starting monitoring for {host} {'(' + hostname + ')' if hostname else ''}")
-        monitor = DockerLogMonitor(config, hostname)
+        monitor = DockerLogMonitor(config, hostname, host)
         monitor.start(client)   
         docker_hosts[host]["monitor"] = monitor
 
@@ -235,15 +235,10 @@ def start_loggifly():
 
     # Start the thread that checks whether the docker hosts are still monitored and tries to reconnect if the connection is lost.
     check_monitor_status(docker_hosts, global_shutdown_event)
-    return monitor_instances, global_shutdown_event
+    return global_shutdown_event
 
 
 if __name__ == "__main__":
-    monitor_instances, global_shutdown_event = start_loggifly()
-    try:
-        global_shutdown_event.wait()
-    except KeyboardInterrupt:
-        for monitor in monitor_instances:
-            logging.info("KeyboardInterrupt received. Shutting down...")
-            monitor.shutdown_event.set()
+    global_shutdown_event = start_loggifly()
+    global_shutdown_event.wait()
     
