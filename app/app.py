@@ -1,20 +1,21 @@
-import logging
-import docker
-import requests
-import threading
 import os
-import signal
 import sys
 import time
-from notifier import send_notification
+import signal
+import threading
+import logging
+import docker
+from threading import Timer
 from docker.tls import TLSConfig
 from urllib.parse import urlparse
 from pydantic import ValidationError
+from typing import Any
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+
 from load_config import load_config, format_pydantic_error
 from docker_monitor import DockerLogMonitor
-
+from notifier import send_notification
 
 
 logging.basicConfig(
@@ -31,17 +32,25 @@ logging.getLogger("watchdog").setLevel(logging.WARNING)
 
 
 def create_handle_signal(monitor_instances, config, config_observer):
+    global_shutdown_event = threading.Event()   
+
     def handle_signal(signum, frame):
         if not config.settings.disable_shutdown_message:
             send_notification(config, "LoggiFly", "LoggiFly", "Shutting down")
+        threads = []
         for monitor in monitor_instances:
             monitor.shutdown_event.set()
-            threading.Thread(target=monitor.cleanup).start()
+            thread = threading.Thread(target=monitor.cleanup)
+            threads.append(thread)
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=2)    
         if config_observer is not None:
             config_observer.stop()
             config_observer.join()
+        global_shutdown_event.set()
 
-    return handle_signal
+    return handle_signal, global_shutdown_event
     
 class ConfigHandler(FileSystemEventHandler):
     """
@@ -53,24 +62,30 @@ class ConfigHandler(FileSystemEventHandler):
         self.monitor_instances = monitor_instances  
         self.last_config_reload_time = 0
         self.config = config
+        self.reload_timer = None
+        self.debounce_seconds = 2
 
     def on_modified(self, event):
         if self.config.settings.reload_config and not event.is_directory and event.src_path.endswith('config.yaml'):
-            if time.time() - self.last_config_reload_time < 3:
-                logging.info("Config reload skipped, waiting for 3 seconds")
-                return
-            logging.info("Config change detected, reloading config...")
-            if not self.config.settings.disable_config_reload_message:
-                send_notification(self.config, "Loggifly", "LoggiFly", "Reloading Config...")
-            time.sleep(0.3)  
-            try:
-                self.config, _ = load_config()
-            except ValidationError as e:
-                self.logger.critical(f"Error reloading Config (using old config) {format_pydantic_error(e)}")
+            if self.reload_timer:
+                self.reload_timer.cancel()
+            self.reload_timer = Timer(self.debounce_seconds, self._trigger_reload)
+            self.reload_timer.start()
 
-            for monitor in self.monitor_instances.values():
-                monitor.reload_config(self.config)
-            self.last_config_reload_time = time.time()  
+    def _trigger_reload(self):
+        logging.info("Config change detected, reloading config...")
+        if not self.config.settings.disable_config_reload_message:
+            send_notification(self.config, "LoggiFly", "LoggiFly", "Reloading Config...")
+        try:
+            self.config, _ = load_config()
+        except ValidationError as e:
+            logging.critical(f"Error reloading config (using old config): {format_pydantic_error(e)}")
+            return
+        for monitor in self.monitor_instances:
+            monitor.reload_config(self.config)
+        if not self.config.settings.reload_config:
+            self.observer.stop()
+            self.logger.info("Config watcher stopped because reload_config is set to False.")
 
 
 def start_config_watcher(monitor_instances, config, path):
@@ -79,90 +94,42 @@ def start_config_watcher(monitor_instances, config, path):
     observer.start()
     return observer
     
-def check_client_connection(monitor, initial_client, tls_config, host, label):
-    current_client = {"client": initial_client}
 
-    def try_to_connect():
-        RECONNECT_COOLDOWN = 60
+def check_monitor_status(docker_hosts, global_shutdown_event):
+    """
+    Every 60s this function checks whether the docker hosts are still monitored and tries to reconnect if the connection is lost.
+    """
+    def check_and_reconnect():
         while True:
-            try:
-                if current_client["client"].ping():
-                    logging.info(f"Successfully reconnected to Docker Host: {host} ({label})")
-                    return True
-            except:
-                pass
-            try:
-                new_client = docker.DockerClient(base_url=host, tls=tls_config)
-                try:
-                    current_client["client"].close()
-                except Exception as e:
-                    logging.debug(f"Error closing old connection to Docker Host {host} ({label}): {e}")
-                current_client["client"] = new_client
-                logging.info(f"Successfully reconnected to Docker Host: {host} ({label})")
-                return True
-            except docker.errors.DockerException as e:
-                logging.debug(f"Could not reconnect to Docker Host {host} ({label}): {e}")
-            except Exception as e:
-                logging.error(f"Could not reconnect to Docker Host: {host} ({label}). Unexpected error: {e}")
-            time.sleep(RECONNECT_COOLDOWN)
-
-    def handle_error(error_count, last_error_time, host):
-        MAX_ERRORS = 5
-        ERROR_WINDOW = 120
-        now = time.time()
-
-        if now - last_error_time > ERROR_WINDOW:
-            error_count = 0
-            last_error_time = now
-        error_count += 1
-
-        if error_count > MAX_ERRORS:
-            logging.error(f"Max errors reached for {host} ({label}). Count: {error_count}")
-            return error_count, last_error_time, False
-        return error_count, last_error_time, True
-
-    def ping_docker_client():
-        error_count = 0
-        last_error_time = time.time()
-        while True:
-            connected = True
-            ping = False
-            try:
-                ping = current_client["client"].ping()
-                if not ping:
-                    error_count, last_error_time, connected = handle_error(error_count, last_error_time, host)
-                    logging.debug(f"Could not ping docker client for {host} ({label})")
-                # else:
-                #     logging.debug(f"Ping successful for {host}")
-            except (docker.errors.APIError, requests.exceptions.ConnectionError) as e:
-                error_count, last_error_time, connected = handle_error(error_count, last_error_time, host)
-                logging.debug(f"Could not ping docker host: {host} ({label}). Connection Error: {e}")
-            except Exception as e:
-                error_count, last_error_time, connected = handle_error(error_count, last_error_time, host)
-                logging.error(f"Could not ping docker host {host} ({label}): Unexpected Error: {e}")
-            finally:
-                if not connected:
-                    logging.error(f"Connection lost to Docker Host: {host} ({label}). Trying to reconnect every 60s now...")
-                    monitor.cleanup()
-                    try:
-                        current_client["client"].close()
+            if global_shutdown_event.is_set():
+                return
+            time.sleep(60)
+            if global_shutdown_event.is_set():
+                return
+            for host, values in docker_hosts.items():
+                tls_config, label, monitor = values["tls_config"], values["label"], values["monitor"]
+                if monitor.shutdown_event.is_set():
+                    while monitor.cleanup_event.is_set():
+                        time.sleep(1)
+                    new_client = None
+                    try:    
+                        new_client = docker.DockerClient(base_url=host, tls=tls_config)
+                    except docker.errors.DockerException as e:
+                        logging.warning(f"Could not reconnect to {host} ({label}): {e}")
                     except Exception as e:
-                        logging.debug(f"Error closing client: {e}")
-                    success = try_to_connect()
-                    if success:
+                        logging.warning(f"Could not reconnect to {host} ({label}). Unexpected error creating Docker client: {e}")
+                    if new_client:
+                        logging.info(f"Successfully reconnected to {host} ({label})")
                         monitor.shutdown_event.clear()
-                        monitor.start(current_client["client"])
-                        error_count = 0 
-                if ping:
-                    time.sleep(10)
-                else:
-                    time.sleep(1 + error_count * 0.5)  
+                        monitor.start(new_client)
+                        monitor.reload_config(None)
 
-    thread = threading.Thread(target=ping_docker_client, daemon=True)
+    thread = threading.Thread(target=check_and_reconnect, daemon=True)
     thread.start()
     return thread
 
-def create_docker_clients():
+
+def create_docker_clients() -> dict[str, dict[str, Any]]: # {host: {client: DockerClient, tls_config: TLSConfig, label: str}}
     """
     This function creates Docker clients for all hosts specified in the DOCKER_HOST environment variables + the mounted docker socket.
     When the port 2376 is used TLS certificates are searched in '/certs/{ca,cert,key}'.pem 
@@ -195,9 +162,9 @@ def create_docker_clients():
         hosts.append((host, label.strip()) if label else (host.strip(), None))
 
     if os.path.exists("/var/run/docker.sock"):
-        hosts.append("unix:///var/run/docker.sock")
+        hosts.append(("unix:///var/run/docker.sock", None)) 
 
-    clients = []
+    docker_hosts = {host: {} for host, _ in hosts}
 
     for host, label in hosts:
         logging.debug(f"Creating Docker Client for {host}")
@@ -210,7 +177,7 @@ def create_docker_clients():
             tls_config = get_tls_config(hostname)
         try:
             client = docker.DockerClient(base_url=host, tls=tls_config)
-            clients.append((client, tls_config, host, label))
+            docker_hosts[host] = {"client": client, "tls_config": tls_config, "label": label}
         except docker.errors.DockerException as e:
             logging.error(f"Error creating Docker client for {host}: {e}")
             continue
@@ -218,9 +185,9 @@ def create_docker_clients():
             logging.error(f"Unexpected error creating Docker client for {host}: {e}")
             continue
 
-    logging.info(f"Connections to Docker-Clients established for {', '.join([client[2] for client in clients])}"
-                 if len(clients) > 1 else "Connected to Docker Client")
-    return clients
+    logging.info(f"Connections to Docker-Clients established for {', '.join([host for host in docker_hosts.keys()])}"
+                 if len(docker_hosts.keys()) > 1 else "Connected to Docker Client")
+    return docker_hosts
 
 
 def start_loggifly():
@@ -235,12 +202,11 @@ def start_loggifly():
     logging.getLogger().setLevel(getattr(logging, config.settings.log_level.upper(), logging.INFO))
     logging.info(f"Log-Level set to {config.settings.log_level}")
 
-    clients = create_docker_clients()
-    client_values = {}
+    docker_hosts = create_docker_clients()
     hostname = ""
-    for number, (client, tls_config, host, label) in enumerate(clients, start=1):
-        client_values[host] = {"client": client, "tls_config": tls_config, "label": label, "host": host}
-        if len(clients) > 1:
+    for number, (host, values) in enumerate(docker_hosts.items(), start=1):
+        client, tls_config, label = values["client"], values["tls_config"], values["label"]
+        if len(docker_hosts.keys()) > 1:
             try:
                 hostname = label if label else client.info()["Name"]
             except Exception as e:
@@ -253,27 +219,29 @@ def start_loggifly():
         logging.info(f"Starting monitoring for {host} {'(' + hostname + ')' if hostname else ''}")
         monitor = DockerLogMonitor(config, hostname)
         monitor.start(client)   
-        client_values[host]["monitor"] = monitor
- 
-    for host, values in client_values.items():
-        check_client_connection(values["monitor"], values["client"], values["tls_config"], host, values["label"])
+        docker_hosts[host]["monitor"] = monitor
 
-    monitor_instances = [client_values[host]["monitor"] for host in client_values.keys()]
-    if isinstance(path, str) and os.path.exists(path):
+    monitor_instances = [docker_hosts[host]["monitor"] for host in docker_hosts.keys()]
+    # Start config observer to catch config.yaml changes
+    if config.settings.reload_config and isinstance(path, str) and os.path.exists(path):
         config_observer = start_config_watcher(monitor_instances, config, path)
     else:
-        logging.debug("Config watcher is not started because no valid config path exist.")
+        logging.debug("Config watcher was not started because reload_config is set to False or because no valid config path exist.")
         config_observer = None
 
-    signal.signal(signal.SIGTERM, create_handle_signal(monitor_instances, config, config_observer))
-    signal.signal(signal.SIGINT, create_handle_signal(monitor_instances, config, config_observer))   
-    return monitor_instances  # return the monitor instances
+    handle_signal, global_shutdown_event = create_handle_signal(monitor_instances, config, config_observer)
+    signal.signal(signal.SIGTERM, handle_signal)
+    signal.signal(signal.SIGINT, handle_signal)   
+
+    # Start the thread that checks whether the docker hosts are still monitored and tries to reconnect if the connection is lost.
+    check_monitor_status(docker_hosts, global_shutdown_event)
+    return monitor_instances, global_shutdown_event
+
 
 if __name__ == "__main__":
-    monitor_instances = start_loggifly()
+    monitor_instances, global_shutdown_event = start_loggifly()
     try:
-        for monitor in monitor_instances:
-            monitor.shutdown_event.wait()
+        global_shutdown_event.wait()
     except KeyboardInterrupt:
         for monitor in monitor_instances:
             logging.info("KeyboardInterrupt received. Shutting down...")
