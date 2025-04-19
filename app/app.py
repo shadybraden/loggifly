@@ -205,7 +205,7 @@ def start_loggifly():
     docker_hosts = create_docker_clients()
     hostname = ""
     for number, (host, values) in enumerate(docker_hosts.items(), start=1):
-        client, tls_config, label = values["client"], values["tls_config"], values["label"]
+        client, label = values["client"], values["label"]
         if len(docker_hosts.keys()) > 1:
             try:
                 hostname = label if label else client.info()["Name"]
