@@ -8,18 +8,17 @@ from threading import Thread, Lock
 from notifier import send_notification
 from load_config import GlobalConfig
 
-
-"""
-This class processes log lines from a Docker container and:
-- searches for patterns and keywords, 
-- tries to catch entries that span multple lines by detecting patterns and putting lines in a buffer first to see if the next line belongs to the same entry or not
-- triggers notifications when a keyword is found
-- triggers restarts/stops of the monitored container
-"""
 class LogProcessor:
     """
+    This class processes log lines from a Docker container and:
+    - searches for patterns and keywords, 
+    - tries to catch entries that span multple lines by detecting patterns and putting lines in a buffer first to see if the next line belongs to the same entry or not
+    - triggers notifications when a keyword is found
+    - triggers restarts/stops of the monitored container
+
+
     LoggiFly searches for patterns that signal the start of a log entry to detect entries that span over multiple lines.
-    That is what these patterns are for.
+    That is what these patterns are for:
     """
     STRICT_PATTERNS = [
             
