@@ -12,7 +12,7 @@
     <a href="https://github.com/clemcer/loggifly/issues">Request Feature</a>
   </p>
 
-<br>
+
 
 **LoggiFly** - A Lightweight Tool that monitors Docker Container Logs for predefined keywords or regex patterns and sends Notifications.
 
@@ -27,7 +27,7 @@ Get instant alerts for security breaches, system errors, or custom patterns thro
 
 
 <div align="center">
-   <img src="/images/vault_failed_login.gif" alt="Failed Vaultwarden Login" width="auto" height="150">
+   <img src="/images/vault_failed_login.gif" alt="Failed Vaultwarden Login" width="auto" height="200">
 </div>
 
 ---
@@ -41,8 +41,13 @@ Get instant alerts for security breaches, system errors, or custom patterns thro
   - [Basic config structure](#-basic-structure)
   - [Detailed Configuration Options](#-detailed-configuration-options)
   - [Environment Variables](#-environment-variables)
-- [Socket Proxy](#%EF%B8%8F-socket-proxy)
+- [Remote Hosts](#-remote-hosts)
+  - [Labels](#labels)
+  - [Remote Hosts Example](#remote-hosts-example)
+  - [Socket Proxy](#-socket-proxy)
 - [Tips](#-tips)
+- [Support / Buy me a coffee](#support)
+
 
 ---
 
@@ -51,7 +56,6 @@ Get instant alerts for security breaches, system errors, or custom patterns thro
 - **🔍 Plain Text, Regex & Multi-Line Log Detection**: Catch simple keywords or complex patterns in log entries that span multiple lines.
 - **🚨 Ntfy/Apprise Alerts**: Send notifications directly to Ntfy or via Apprise to 100+ different services (Slack, Discord, Telegram).
 - **🔁 Trigger Stop/Restart**: A restart/stop of the monitored container can be triggered on specific critical keywords.
-- **⚙️ Fine-Grained Control**: Unique keywords and other settings (like ntfy topic/tags/priority) per container.
 - **📁 Log Attachments**: Automatically include a log file to the notification for context.
 - **⚡ Automatic Reload on Config Change**: The program automatically reloads the `config.yaml` when it detects that the file has been changed.
 
@@ -69,16 +73,16 @@ Get instant alerts for security breaches, system errors, or custom patterns thro
 ---
 
 >[!TIP]
-For better security use a [Docker Socket Proxy](#%EF%B8%8F-socket-proxy). You won't be able to trigger container stops/restarts with a proxy, but if you don't need that and want to secure your setup I recommend you take a look at [this section](#%EF%B8%8F-socket-proxy) before you finish the Quick Start Install process and think about using that compose file instead of the basic one in the Quick Start.
+>For better security use a **[Docker Socket Proxy](#-socket-proxy)**.
+You won't be able to trigger container stops/restarts with a proxy, but if you don't need that, consider taking a look at [this section](#-socket-proxy) before you wrap up the Quick Start install and consider using that compose file instead of the basic one.
 
 ## ⚡️ Quick start
 
-
-In this quickstart only the most essential settings are covered, [here](#-Configuration-Deep-Dive) is a more detailed config walkthrough.<br>
+In this quickstart only the most essential settings are covered, [here](#Configuration-Deep-Dive) is a more detailed config walkthrough.<br>
 
 Choose your preferred setup method - simple environment variables for basic use or a YAML config for advanced control.
-- Environment variables allow for a simple and much quicker setup
-- With YAML you can use complex Regex patterns, have different keywords & other settings per container and set keywords that trigger a restart/stop of the container.
+- Environment variables allow for a **simple** and **much quicker** setup
+- With YAML you can use complex **Regex patterns**, have different keywords & other settings **per container** and set keywords that trigger a **restart/stop** of the container.
 
 > [!Note]
 In previous versions the default location for the `config.yaml` file was `/app/config.yaml`. The old path still works (so not a breaking change) but the new official path is now `/config/config.yaml`.<br>
@@ -127,13 +131,13 @@ Use this [docker compose](/docker-compose.yaml) and edit this line:
 volumes:
   - ./loggifly/config:/config  # 👈 Replace left side of the mapping with your local path
 ```
-If you want you can configure some of the settings or sensitive values like ntfy tokens or apprise URLs via [Environment Variables](#-environment-variables).
+If you want you can configure some of the settings or sensitive values like ntfy tokens or apprise URLs via [Environment Variables](#environment-variables).
 
 **Step 2: Configure Your config.yaml**
 
-If `/config` is mounted a [template file](/config_template.yaml) will be downloaded into that directory. You can edit the downloaded template file and rename it to `config.yaml` to use it.<br>
+If `/config` is mounted a **[template file](/config_template.yaml) will be downloaded** into that directory. You can edit the downloaded template file and rename it to `config.yaml` to use it.<br>
 You can also take a look at the [Configuration-Deep-Dive](#-Configuration-Deep-Dive) for all the configuration options.<br>
-Or you can edit and copy paste the following minimal config into a newly created `config.yaml` file in `/config`.
+Or you can edit and copy paste the following **minimal config** into a newly created `config.yaml` file in `/config`.
 ```yaml
 # You have to configure at least one container.
 containers:
@@ -183,7 +187,6 @@ docker compose up -d
 
 ## 🤿 Configuration Deep Dive
 
-
 The Quick Start only covered the essential settings, here is a more detailed walktrough of all the configuration options.
 
 
@@ -199,9 +202,9 @@ The `config.yaml` file is divided into four main sections:
 
 > [!IMPORTANT]
 For the program to function you need to configure:
->- at least one container
->- at least one notification service (Ntfy or Apprise)
->- at least one keyword (either set globally or per container)
+>- **at least one container**
+>- **at least one notification service (Ntfy or Apprise)**
+>- **at least one keyword (either set globally or per container)**
 >
 >  The rest is optional or has default values.
 
@@ -301,13 +304,13 @@ global_keywords:
 
 <br>
 
-[Here](/config_template.yaml) you can find a config template with all available configuration options and explaining comments. When `/config` is mounted in the volumes section of your docker compose this template file will be downloaded. <br>
-[Here](/config_example.yaml) you can find an example config with some use cases.
+[Here](/config_template.yaml) you can find a **config template** with all available configuration options and explaining comments. When `/config` is mounted in the volumes section of your docker compose this template file will be downloaded. <br>
+[Here](/config_example.yaml) you can find an example config with some **use cases**.
 
 
 ### 🍀 Environment Variables
 
-Except for `restart_keywords`, container specific settings/keywords and regex patterns you can configure most settings via docker environment variables.
+Except for `restart_keywords`, container specific settings/keywords and regex patterns you can configure most settings via **Docker environment variables**.
 
 <details><summary><em>Click to expand:</em><strong> Environment Variables </strong></summary><br>
 
@@ -339,23 +342,76 @@ Except for `restart_keywords`, container specific settings/keywords and regex pa
 
 ---
 
-## ⚠️ Socket Proxy
+## 📡 Remote Hosts
 
-A Docker Socket Proxy adds a security layer by controlling access to the Docker daemon — essentially letting LoggiFly only read container info and logs without giving it full control over the docker socket.<br>
-With the linuxserver Image I have had some connection and timeout problems while streaming logs so the recommended proxy is [Tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy).<br>
-When using the Tecnativa Proxy the log stream connection drops every ~10 minutes for whatever reason, LoggiFly simply resets the connection.<br>
-Here is a sample docker-compose file:
+LoggiFly supports connecting to **multiple remote hosts**.<br>
+Remote hosts can be configured by providing a **comma-separated list of addresses** in the `DOCKER_HOST` environment variable.<br>
+To use **TLS** you have to mount `/certs` in the volumes section of your docker compose.<br>
+LoggiFly expects the TLS certificates to be in `/certs/{ca,cert,key}.pem` or in case of multiple hosts `/certs/{host}/{ca,cert,key}.pem` with `{host}` being either the IP or FQDN.<br>
+You can also combine remote hosts with a mounted docker socket.<br>
 
+>[!NOTE]
+When the connection to a docker host is lost, LoggiFly will try to reconnect every 60s
 
-<details><summary><em>Click to expand:</em> <strong>Socket Proxy: Docker Compose </strong></summary>
+### Labels
+When multiple hosts are set LoggiFly will use **labels** to differentiate between them both in notifications and in logging.<br>
+You can set a **label** by appending it to the address with `"|"` ([_see example_](#remote-host-example)).<br>
+When no label is set LoggiFly will use the **hostname** retrieved via the docker daemon. If that fails, usually because `INFO=1` has to be set when using a proxy, the labels will just be `Host-{Nr}`.<br>
+If you want to set a label to the mounted docker socket you can do so by adding `unix://var/run/docker.sock|label` in the `DOCKER_HOST` environment variable (_the socket still has to be mounted_) or just set the address of a [socket proxy](#socket-proxy) with a label.
+
+### Remote Hosts Example
+
+In this example LoggiFly monitors container logs on the host it is running on via a mounted docker socket as well as two remote hosts set up with TLS.
+One remote host will be called '_foobar_'. The host mounted via the docker socket and the other remote host have no label set and will be called whatever the hostname is.
+
+<details><summary><em>Click to expand:</em> <strong>Remote Hosts: Docker Compose </strong></summary>
 
 ```yaml
+version: "3.8"
 services:
   loggifly:
     image: ghcr.io/clemcer/loggifly:latest
     container_name: loggifly 
     volumes:
-      - .loggifly/config:/config # Place your config.yaml here
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./loggifly/config:/config # Place your config.yaml here if you are using one
+      - ./certs:/certs
+      # Assuming the Docker hosts use TLS, the folder structure for the certificates should be like this:
+      # /certs/
+      # ├── 192.168.178.80/
+      # │   ├── ca.pem
+      # │   ├── cert.pem
+      # │   └── key.pem
+      # └── 192.168.178.81/
+      #     ├── ca.pem
+      #     ├── cert.pem
+      #     └── key.pem
+    environment:
+      TZ: Europe/Berlin
+      DOCKER_HOST: tcp://192.168.178.80:2376,tcp://192.168.178.81:2376|foobar
+    restart: unless-stopped
+```
+</details>
+
+### Socket Proxy
+
+You can also connect via a **Docker Socket Proxy**.<br>
+A Socket Proxy adds a security layer by **controlling access to the Docker daemon**, essentially letting LoggiFly only read certain info like container logs without giving it full control over the docker socket.<br>
+With the linuxserver image I have had some connection and timeout problems so the recommended proxy is **[Tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy)**.<br>
+When using the Tecnativa Proxy the log stream connection drops every ~10 minutes for whatever reason, LoggiFly simply resets the connection.<br>
+Here is a sample **docker compose** file:
+
+
+<details><summary><em>Click to expand:</em> <strong>Socket Proxy: Docker Compose </strong></summary>
+
+```yaml
+version: "3.8"
+services:
+  loggifly:
+    image: ghcr.io/clemcer/loggifly:latest
+    container_name: loggifly 
+    volumes:
+      - ./loggifly/config:/config # Place your config.yaml here if you are using one
     environment:
       TZ: Europe/Berlin
       DOCKER_HOST: tcp://socket-proxy:2375
@@ -374,13 +430,13 @@ services:
     restart: unless-stopped
 
 ```
-
 </details>
 
-<br>
 
 >[!Note]
 `action_keywords` don't work when using a socket proxy.
+<br>
+
 
 ## 💡 Tips
 
@@ -394,6 +450,20 @@ services:
     - Unrecognized Patterns: If issues persist, open an issue and share the affected log samples
 
 ---
+
+
+## Support
+
+If you find LoggiFly useful, drop a ⭐️ on the repo
+
+<p>
+    <a href="https://www.buymeacoffee.com/clemcer" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50"></a>
+</p>
+
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=clemcer/loggifly&type=Date)](https://www.star-history.com/#clemcer/loggifly&Date)
 
 ## License
 [MIT](https://github.com/clemcer/LoggiFly/blob/main/LICENSE)
