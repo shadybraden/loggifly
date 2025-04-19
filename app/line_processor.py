@@ -9,10 +9,16 @@ from notifier import send_notification
 from load_config import GlobalConfig
 
 
-
+"""
+This class processes log lines from a Docker container and:
+- searches for patterns and keywords, 
+- tries to catch entries that span multple lines by detecting patterns and putting lines in a buffer first to see if the next line belongs to the same entry or not
+- triggers notifications when a keyword is found
+- triggers restarts/stops of the monitored container
+"""
 class LogProcessor:
     """
-    LoggiFly seearches for patterns that signal the start of a log entry to detect entries that span over multiple lines.
+    LoggiFly searches for patterns that signal the start of a log entry to detect entries that span over multiple lines.
     That is what these patterns are for.
     """
     STRICT_PATTERNS = [
@@ -53,7 +59,7 @@ class LogProcessor:
             r"\b(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])-\d{4} \d{2}:\d{2}:\d{2}\b",
             r"(?i)\b\d{2}\/\d{2}\/\d{4}(?:,\s+|:|\s+])\d{1,2}:\d{2}:\d{2}\s*(?:AM|PM)?\b",
             r"\b\d{10}\.\d+\b",                                                          # 1739762586.0394847
-        
+
             # ----------------------------------------------------------------
             # Log-Level (Fallback)
             # ----------------------------------------------------------------
@@ -61,8 +67,6 @@ class LogProcessor:
             r"(?i)(?<=\s)\b(?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\b(?=\s|:|$)",
             r"(?i)\[(?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\]",
             r"(?i)\((?:INFO|ERROR|DEBUG|WARN(?:ING)?|CRITICAL)\)",
-
-            # ## TESTING BECAUSE IT DOES NOT WORK FOR IMMICH SERVER LOGS
             r"(?i)\d{2}/\d{2}/\d{4},\s+\d{1,2}:\d{2}:\d{2}\s+(?:AM|PM)",
         ]
             
@@ -85,10 +89,11 @@ class LogProcessor:
         self.valid_pattern = False
         
         self.load_config_variables(config)
-
-        
     
     def load_config_variables(self, config):
+        """
+        This function can get called from the log_monitor function in app.py to reload the config variables
+        """
         self.config = config
         self.container_keywords = self.config.global_keywords.keywords.copy()
         self.container_keywords.extend(keyword for keyword in self.config.containers[self.container_name].keywords if keyword not in self.container_keywords)
@@ -122,35 +127,36 @@ class LogProcessor:
                     self.logger.debug(f"{self.container.name}: Mode: Multi-Line. Found starting pattern(s) in logs.")
                 else:
                     self.logger.debug(f"{self.container.name}: Mode: Single-Line. Could not find starting pattern in the logs. Continuing the search in the next {self.line_limit - self.line_count} lines")
-
         
             self.buffer = []
             self.log_stream_timeout = 1 # self.config.settings.flush_timeout Not an supported setting (yet)
             self.log_stream_last_updated = time.time()
-            # Start Background-Thread for Timeout
+            # Start Background-Thread for Timeout (only starts when it is not already running)
             self._start_flush_thread()
                 
-
-            
-    def _container_action(self, action, log_line, found):
-        try: 
-            if action == "stop":
-                self.logger.info(f"Stopping Container: {self.container_name}.")
-                container = self.container
-                container.stop()
-                self.logger.info(f"Container {self.container_name} has been stopped")
-            elif action == "restart":
-                self.logger.info(f"Restarting Container: {self.container_name}.")
-                container = self.container
-                container.stop()
-                time.sleep(3)
-                container.start()
-                self.logger.info(f"Container {self.container_name} has been restarted")
-        except Exception as e:
-            self.logger.error(f"Failed to {action} {self.container_name}: {e}")
-        
+    def process_line(self, line):
+        """        
+        This function gets called from outside this class by the monitor_container_logs function in app.py
+        If the user disables multi_line_entries or if there are no patterns detected (yet) the program switches to single-line mode
+        In single-line mode the line gets processed and searched for keywords instantly instead of going into the buffer first
+        """
+        clean_line = re.sub(r"\x1b\[[0-9;]*m", "", line)
+        if self.multi_line_config == False:
+            self._search_and_send(clean_line)
+        else:
+            if self.line_count < self.line_limit:
+                self._find_pattern(clean_line)
+            if self.valid_pattern == True:
+                self._process_multi_line(clean_line)
+            else:
+                self._search_and_send(clean_line)        
 
     def _find_pattern(self, line_s):
+        """
+        This function searches for patterns in the log lines to be able to detect the start of new log entries.
+        When a pattern is found self.valid_pattern is set to True and the pattern gets added to self.patterns.
+        When no pattern is found self.valid_pattern stays False which sets the mode to single-line (not catching multi line entries).
+        """
         self.waiting_for_pattern = True
         for line in line_s.splitlines():
             clean_line = re.sub(r"\x1b\[[0-9;]*m", "", line)
@@ -178,16 +184,15 @@ class LogProcessor:
         if self.line_count >= self.line_limit:
             if self.patterns == []:
                 self.logger.info(f"{self.container_name}: No pattern found in logs after {self.line_limit} lines. Mode: single-line")
-            # else:   
-            #     self.logger.debug(f"Container: {self.container_name}: Found pattern(s) in logs. Stopping the search now after {self.line_limit}] lines. Mode: multi-line.\Patterns found: {self.patterns}")
-                #self.logger.debug(f"Container: {self.container_name}: Patterns found: {self.patterns}")
 
         self.waiting_for_pattern = False
 
-
     def _start_flush_thread(self):
-    # Every second the buffer (with log lines that should belong to the same entry) gets flushed
         def check_flush():
+            """
+            When mode is multi-line new lines go into a buffer first to see whether the next line belongs to the same entry or not.
+            Every second the buffer gets flushed
+            """ 
             self.flush_thread_stopped.clear()
             while True:
                 if self.container_stop_event.is_set(): # self.shutdown_event.is_set() or 
@@ -206,29 +211,23 @@ class LogProcessor:
         if self.flush_thread_stopped.is_set():
             self.flush_thread = Thread(target=check_flush, daemon=True)
             self.flush_thread.start()
-            #self.logger.debug(f"Flush thread started for {self.container.name}")
-        #else:
-            #self.logger.debug(f"Flush thread already running for {self.container.name}")
 
-
-    # This function gets called from outside this class by the monitor_container_logs function in app.py
-    # If the user disables multi_line_entries or if there are no patterns detected (yet) the program switches to single-line mode
-    # In single-line mode the line gets processed and searched for keywords instantly instead of going into the buffer first
-    def process_line(self, line):
-        clean_line = re.sub(r"\x1b\[[0-9;]*m", "", line)
-        if self.multi_line_config == False:
-            self._search_and_send(clean_line)
-        else:
-            if self.line_count < self.line_limit:
-                self._find_pattern(clean_line)
-            if self.valid_pattern == True:
-                self._process_multi_line(clean_line)
-            else:
-                self._search_and_send(clean_line)
-        
-            
+    def _handle_and_clear_buffer(self):
+        """    
+        This function is called either when the buffer is flushed 
+        or when a new log entry was found that does not belong to the last line in the buffer
+        It calls the _search_and_send function to search for keywords in all log lines in the buffer
+        """
+        log_entry = "\n".join(self.buffer)
+        self._search_and_send(log_entry)
+        self.buffer.clear()
 
     def _process_multi_line(self, line):
+        """
+        When mode is multi-line this function processes the log lines.
+        It checks if the line matches any of the patterns (meaning the line signals a new log entry) 
+        and if so, it flushes the buffer and appends the new line to the buffer.
+        """
         # When the pattern gets updated by _find_pattern() this function waits 
         while self.waiting_for_pattern is True:
             time.sleep(1)
@@ -252,30 +251,31 @@ class LogProcessor:
                 self.buffer.append(line)
         self.log_stream_last_updated = time.time()
 
-    # This function is called either when the buffer is flushed every second 
-    # or if a new log entry was found which means everything in the buffer is one complete log entry
-    def _handle_and_clear_buffer(self):
-        message = "\n".join(self.buffer)
-        self._search_and_send(message)
-        self.buffer.clear()
-
-
     def _search_keyword(self, log_line, keyword, ignore_keyword_time=False):
-            if isinstance(keyword, dict) and keyword.get("regex") is not None:
-                regex_keyword = keyword["regex"]
-                if ignore_keyword_time or time.time() - self.time_per_keyword.get(regex_keyword) >= int(self.notification_cooldown):
-                    if re.search(regex_keyword, log_line, re.IGNORECASE):
-                        self.time_per_keyword[regex_keyword] = time.time()
-                        return f"Regex: {regex_keyword}"
-            else:
-                if ignore_keyword_time or time.time() - self.time_per_keyword.get(keyword) >= int(self.notification_cooldown):
-                    if str(keyword).lower() in log_line.lower():
-                        self.time_per_keyword[keyword] = time.time()
-                        return keyword
-            return None
+        """
+        This function searches for keywords and regex patterns in the log entry it is given-
+        When a keywords is found and the time since the last notification is greater than the cooldown time
+        it returns the keywords, if nothing is found it returns None
+        """
+        if isinstance(keyword, dict) and keyword.get("regex") is not None:
+            regex_keyword = keyword["regex"]
+            if ignore_keyword_time or time.time() - self.time_per_keyword.get(regex_keyword) >= int(self.notification_cooldown):
+                if re.search(regex_keyword, log_line, re.IGNORECASE):
+                    self.time_per_keyword[regex_keyword] = time.time()
+                    return f"Regex: {regex_keyword}"
+        else:
+            if ignore_keyword_time or time.time() - self.time_per_keyword.get(keyword) >= int(self.notification_cooldown):
+                if str(keyword).lower() in log_line.lower():
+                    self.time_per_keyword[keyword] = time.time()
+                    return keyword
+        return None
     
-    # Here the line is searchd for simple keywords or regex patterns
     def _search_and_send(self, log_line):
+        """
+        Searches for keywords, keywords with attachment and action_keywords 
+        and if found calls the _send_message function to send a notification 
+        or the _container_action function to restart/stop the container
+        """
         keywords_with_attachment_found = [] 
         keywords_found = []
         # Search for normal keywords
@@ -323,11 +323,12 @@ class LogProcessor:
                     self.last_action_time = time.time()
                     break
             
-
     def _log_attachment(self):  
+        """Tail the last lines of the container logs and save them to a file"""
         base_name = f"last_{self.lines_number_attachment}_lines_from_{self.container_name}.log"
+
         def find_available_name(filename, number=1):
-            # Create different file name with number if it already exists (in case of many notifications at same time)
+            """Create different file name with number if it already exists (in case of many notifications at same time)"""
             new_name = f"{filename.rsplit('.', 1)[0]}_{number}.log"
             if os.path.exists(new_name):
                 return find_available_name(filename, number + 1)
@@ -347,8 +348,8 @@ class LogProcessor:
             self.logger.error(f"Could not read logs of Container {self.container_name}: {e}")
             return None
 
-
     def _send_message(self, message, keywords, send_attachment=False, action=None):
+        """Adapt the notification title and call the send_notification function from notifier.py"""
         if isinstance(keywords, list) and len(keywords) == 1:
             keyword = keywords[0]
             title = f"'{keyword}' found in {self.container.name}"
@@ -379,7 +380,19 @@ class LogProcessor:
         else:
             send_notification(self.config, self.container_name, title, message, hostname=self.hostname)
 
-
-
-
-
+    def _container_action(self, action):
+        try: 
+            if action == "stop":
+                self.logger.info(f"Stopping Container: {self.container_name}.")
+                container = self.container
+                container.stop()
+                self.logger.info(f"Container {self.container_name} has been stopped")
+            elif action == "restart":
+                self.logger.info(f"Restarting Container: {self.container_name}.")
+                container = self.container
+                container.stop()
+                time.sleep(3)
+                container.start()
+                self.logger.info(f"Container {self.container_name} has been restarted")
+        except Exception as e:
+            self.logger.error(f"Failed to {action} {self.container_name}: {e}")
