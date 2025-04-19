@@ -83,8 +83,9 @@ def send_ntfy_notification(config, container_name, message, title, file_name=Non
         logging.error("Error while trying to connect to ntfy: %s", e)
 
 
-def send_notification(config: GlobalConfig, container_name, title, message, file_name=None):
-    
+def send_notification(config: GlobalConfig, container_name, title, message, hostname=None, file_name=None):
+    # When multiple hosts are set the hostname is added to the title, when only one host is set the hostname is an empty string
+    title = f"[{hostname}] - {title}" if hostname else title
     if (config.notifications and config.notifications.ntfy and config.notifications.ntfy.url and config.notifications.ntfy.topic):
         send_ntfy_notification(config, container_name, message, title, file_name)
     if (config.notifications and config.notifications.apprise and config.notifications.apprise.url):
