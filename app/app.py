@@ -184,7 +184,12 @@ def create_docker_clients() -> dict[str, dict[str, Any]]: # {host: {client: Dock
         except Exception as e:
             logging.error(f"Unexpected error creating Docker client for {host}: {e}")
             continue
-
+        
+    if len(docker_hosts) == 0:
+        logging.critical("Could not connect to any docker hosts. Please check your DOCKER_HOST environment variable.")
+        logging.info("Waiting 10s to prevent restart loop...")
+        time.sleep(10)
+        sys.exit(1)
     logging.info(f"Connections to Docker-Clients established for {', '.join([host for host in docker_hosts.keys()])}"
                  if len(docker_hosts.keys()) > 1 else "Connected to Docker Client")
     return docker_hosts
