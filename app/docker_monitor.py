@@ -171,7 +171,7 @@ class DockerLogMonitor:
             if container_name:
                 self.logger.error(f"Too many errors for {container_name}. Count: {error_count}")
             else:
-                self.logger.error(f"Too many errors for Docker Event Handler. Count: {error_count}")
+                self.logger.error(f"Too many errors for Docker Event Watcher. Count: {error_count}")
             disconnected = False
             try:
                 if not self.client.ping():
@@ -296,7 +296,7 @@ class DockerLogMonitor:
                 too_many_errors = False
                 try: 
                     event_stream = self.client.events(decode=True, filters={"event": ["start", "stop"]}, since=now)
-                    self.logger.info("  Docker Event Handler started. Watching for new containers...")
+                    self.logger.info("Docker Event Watcher started. Watching for new containers...")
                     for event in event_stream:
                         if self.shutdown_event.is_set():
                             self.logger.debug("Shutdown event is set. Stopping event handler.")
@@ -322,11 +322,11 @@ class DockerLogMonitor:
                         self.logger.error(f"Docker Event-Handler was stopped {e}. Trying to restart it.")
                 finally:
                     if self.shutdown_event.is_set() or too_many_errors:
-                        self.logger.debug("Docker Event handler is shutting down.")
+                        self.logger.debug("Docker Event Watcher is shutting down.")
                         break
                     else:
-                        self.logger.info(f"Docker Event Handler stopped. Reconnecting... {'error count: ' + str(error_count) if error_count > 0 else ''}")
-            self.logger.info("Docker Event handler stopped.")
+                        self.logger.info(f"Docker Event Watcher stopped. Reconnecting... {'error count: ' + str(error_count) if error_count > 0 else ''}")
+            self.logger.info("Docker Event Watcher stopped.")
 
         thread = threading.Thread(target=event_handler, daemon=True)
         self._add_thread(thread)

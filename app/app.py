@@ -164,10 +164,10 @@ def create_docker_clients() -> dict[str, dict[str, Any]]: # {host: {client: Dock
     if os.path.exists("/var/run/docker.sock") and not any(h[0] == "unix://var/run/docker.sock" for h in hosts):
         hosts.append(("unix:///var/run/docker.sock", None)) 
 
-    docker_hosts = {host: {} for host, _ in hosts}
+    docker_hosts = {}
 
     for host, label in hosts:
-        logging.debug(f"Creating Docker Client for {host}")
+        logging.info(f"Trying to connect to docker client on host: {host}")
         parsed = urlparse(host)
         tls_config = None
         if parsed.scheme == "unix":
@@ -176,7 +176,7 @@ def create_docker_clients() -> dict[str, dict[str, Any]]: # {host: {client: Dock
             hostname = parsed.hostname
             tls_config = get_tls_config(hostname)
         try:
-            client = docker.DockerClient(base_url=host, tls=tls_config)
+            client = docker.DockerClient(base_url=host, tls=tls_config, timeout=10)
             docker_hosts[host] = {"client": client, "tls_config": tls_config, "label": label}
         except docker.errors.DockerException as e:
             logging.error(f"Error creating Docker client for {host}: {e}")
