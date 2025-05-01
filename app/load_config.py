@@ -36,17 +36,21 @@ class KeywordBase(BaseModel):
                 converted = []
                 for kw in values[field]:
                     if isinstance(kw, dict):
+                        allowed_keys = {"keyword", "regex", "template"}
                         keys = list(kw.keys())
-                        if len(keys) == 1 and keys[0] == "regex":
-                            if isinstance(kw["regex"], (str, int)):
-                                converted.append({keys[0]: str(kw["regex"])})
-                        else:
-                            logging.warning(f"Ignoring Error in config for {field}: '{kw}'. Only 'regex' is allowed as a key.")
+                        if any(key not in allowed_keys for key in keys):
+                            logging.warning(f"Ignoring Error in config for {field}: '{kw}'. Only 'keyword', 'regex' or 'template' is allowed as a key.")
                             continue
+                        else:
+                            for key in keys:
+                                if isinstance(kw[key], int):
+                                    kw[key] = str(kw[key])
+                            converted.append(kw)
                     else:
                         try:
                             converted.append(str(kw))
                         except ValueError:
+                            logging.warning(f"Ignoring unexpected Error in config for {field}: '{kw}'.")
                             continue
                 values[field] = converted
         return values
@@ -58,31 +62,31 @@ class ActionKeywords(BaseModel):
     def convert_int_to_str(cls, value):
         allowed_keys = {"restart", "stop"}
         converted = []
-        for item in value:
-            if isinstance(item, dict):
-                for key, val in item.items():
-                    if key not in allowed_keys:
-                        logging.warning(f"Ignoring Error in config for action_keywords: Key not allowed for restart_keywords. Wrong Input: '{key}: {val}'. Allowed Keys: {allowed_keys}.")
-                        continue  
-                    # convert Integer zu String
+        for kw in value:
+            if isinstance(kw, dict):
+                if any(key not in allowed_keys for key in kw.keys()):
+                    logging.warning(f"Ignoring Error in config for action_keywords: Key not allowed for restart_keywords. Wrong Input: '{key}: {val}'. Allowed Keys: {allowed_keys}.")
+                    continue
+                for key, val in kw.items():
+                    if not val:
+                        logging.warning(f"Ignoring Error in config for action_keywords: Wrong Input: '{key}: {val}'.") 
+                        continue
+                    # convert Integer to String
                     if isinstance(val, int):
                         converted.append({key: str(val)})
                     elif isinstance(val, dict):
-                        if "regex" in val:
+                        if val.get("regex"):
                             # Convert regex-value, if Integer
-                            regex_val = val["regex"]
-                            if isinstance(regex_val, (int, str)):
-                                val["regex"] = str(regex_val)
+                            if isinstance(val["regex"], (int, str)):
+                                converted.append({key: str(val["regex"])})
                             else:
                                 logging.warning(f"Ignoring Error in config for action_keywords: Wrong Input: '{key}: {val}' regex keyword is not a valid value.")
-                                continue
-                            converted.append({key: val})
                         else:
                             logging.warning(f"Ignoring Error in config for action_keywords: Wrong Input: '{key}: {val}'. If you put a dictionary after 'restart'/'stop' only 'regex' is allowed as a key.") 
                     else:
                         converted.append({key: val})
             else:
-                logging.warning(f"Ignoring Error in config for action_keywords: Wrong Input: '{item}'. You have to set a dictionary with 'restart' or 'stop' as key.")
+                logging.warning(f"Ignoring Error in config for action_keywords: Wrong Input: '{kw}'. You have to set a dictionary with 'restart' or 'stop' as key.")
         return converted
     
 

@@ -2,7 +2,10 @@ import docker
 import os
 import re
 import time
+import json
+import string
 import logging
+import traceback
 import threading
 from threading import Thread, Lock
 from notifier import send_notification
@@ -152,7 +155,7 @@ class LogProcessor:
 
     def _find_pattern(self, line_s):
         """
-        This function searches for patterns in the log lines to be able to detect the start of new log entries.
+        searches for patterns in the log lines to be able to detect the start of new log entries.
         When a pattern is found self.valid_pattern is set to True and the pattern gets added to self.patterns.
         When no pattern is found self.valid_pattern stays False which sets the mode to single-line (not catching multi line entries).
         """
@@ -252,56 +255,90 @@ class LogProcessor:
 
     def _search_keyword(self, log_line, keyword, ignore_keyword_time=False):
         """
-        This function searches for keywords and regex patterns in the log entry it is given-
+        searches for keywords and regex patterns in the log entry it is given-
         When a keywords is found and the time since the last notification is greater than the cooldown time
         it returns the keywords, if nothing is found it returns None
         """
-        if isinstance(keyword, dict) and keyword.get("regex") is not None:
-            regex_keyword = keyword["regex"]
-            if ignore_keyword_time or time.time() - self.time_per_keyword.get(regex_keyword) >= int(self.notification_cooldown):
-                if re.search(regex_keyword, log_line, re.IGNORECASE):
-                    self.time_per_keyword[regex_keyword] = time.time()
-                    return f"Regex: {regex_keyword}"
-        else:
+        if isinstance(keyword, dict):
+            if keyword.get("regex") is not None:
+                regex_keyword = keyword["regex"]
+                if ignore_keyword_time or time.time() - self.time_per_keyword.get(regex_keyword) >= int(self.notification_cooldown):
+                    if re.search(regex_keyword, log_line, re.IGNORECASE):
+                        self.time_per_keyword[regex_keyword] = time.time()
+                        return f"Regex: {regex_keyword}"
+            elif keyword.get("keyword") is not None:
+                keyword = str(keyword["keyword"])
+        if isinstance(keyword, str):
             if ignore_keyword_time or time.time() - self.time_per_keyword.get(keyword) >= int(self.notification_cooldown):
-                if str(keyword).lower() in log_line.lower():
+                if keyword.lower() in log_line.lower():
                     self.time_per_keyword[keyword] = time.time()
                     return keyword
         return None
     
     def _search_and_send(self, log_line):
         """
-        Searches for keywords, keywords with attachment and action_keywords 
+        Triggers the search for keywords, keywords with attachment and action_keywords 
         and if found calls the _send_message function to send a notification 
         or the _container_action function to restart/stop the container
         """
+
+        def message_from_template(template, log_line):
+            message = log_line
+            try:
+                json_log_entry = json.loads(log_line)
+                json_template_fields = [f for _, f, _, _ in string.Formatter().parse(template) if f]
+                json_log_data = {k: json_log_entry.get(k, "") for k in json_template_fields}
+                message = template.format(**json_log_data)
+
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                self.logger.error(f"Error parsing log line as JSON: {log_line}")
+            except KeyError as e:
+                self.logger.error(f"KeyError: {e} in template: {template} with log line: {log_line}")
+            except Exception as e:
+                self.logger.error(f"Unexpected Error parsing log line as JSON: {e}")
+                self.logger.error(f"Details: {traceback.format_exc()}") 
+            return message
+
         keywords_with_attachment_found = [] 
         keywords_found = []
+        template = None
+        send_attachment = False
         # Search for normal keywords
         for keyword in self.container_keywords:
             found = self._search_keyword(log_line, keyword)
             if found:
                 keywords_found.append(found)
+                if isinstance(keyword, dict) and keyword.get("template") is not None:
+                    template = keyword.get("template")
+
         # Search for Keywords with attachment
         for keyword in self.container_keywords_with_attachment:
             found = self._search_keyword(log_line, keyword)
             if found:
-                keywords_with_attachment_found.append(found)        
+                keywords_found.append(found)    
+                send_attachment = True
+                if isinstance(keyword, dict) and keyword.get("template") is not None:
+                    template = keyword.get("template")
+
         # Trigger notification if keywords have been found
-        if keywords_with_attachment_found:
+        if keywords_found:
+            if template is not None:
+                self.logger.debug(f"Trying to use this template: '{template}'")
+                message = message_from_template(template, log_line)
+            else:
+                message = log_line
+        
             formatted_log_entry ="\n  -----  LOG-ENTRY  -----\n" + ' | ' + '\n | '.join(log_line.splitlines()) + "\n   -----------------------"
-            self.logger.info(f"The following keywords were found in {self.container_name}: {keywords_with_attachment_found + keywords_found}. (A Logfile will be attached){formatted_log_entry}" 
-                        if len(keywords_with_attachment_found + keywords_found) > 1 
-                        else f"'{keywords_with_attachment_found[0]}' was found in {self.container_name}{formatted_log_entry}"
-                        )
-            self._send_message(log_line, keywords_with_attachment_found, send_attachment=True)
-        elif keywords_found:
-            formatted_log_entry ="\n  -----  LOG-ENTRY  -----\n" + ' | ' + '\n | '.join(log_line.splitlines()) + "\n   -----------------------"
-            self.logger.info(f"The following keywords were found in {self.container_name}: {keywords_found}{formatted_log_entry}"
-                         if len(keywords_found + keywords_with_attachment_found) > 1 
-                         else f"'{keywords_found[0]}' was found in {self.container_name}{formatted_log_entry}"
-                         )
-            self._send_message(log_line, keywords_found, send_attachment=False)
+            self.logger.info(f"The following keywords were found in {self.container_name}: {keywords_with_attachment_found + keywords_found}." 
+                if len(keywords_with_attachment_found + keywords_found) > 1 
+                else f"'{keywords_with_attachment_found[0]}' was found in {self.container_name}"
+                f" (A Log FIle will be attached)" if send_attachment else ""
+                f"{formatted_log_entry}"
+                )
+            if send_attachment:
+                self._send_message(message, keywords_with_attachment_found, send_attachment=True)
+            else:
+                self._send_message(message, keywords_found, send_attachment=False)
             
         # Keywords that trigger a restart
         for keyword in self.container_action_keywords:

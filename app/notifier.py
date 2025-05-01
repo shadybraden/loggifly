@@ -52,14 +52,13 @@ def send_ntfy_notification(config, container_name, message, title, file_name=Non
         credentials = f"{config.notifications.ntfy.username}:{config.notifications.ntfy.password.get_secret_value()}"
         encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
         headers["Authorization"] = f"Basic {encoded_credentials}"
-    message_text = f"{message}"
     try:
         if file_name:
             headers["Filename"] = file_name
             with open(file_name, "rb") as file:
-                if len(message_text) < 199:
+                if len(message) < 199:
                     response = requests.post(
-                        f"{ntfy_url}/{ntfy_topic}?message={urllib.parse.quote(message_text)}",
+                        f"{ntfy_url}/{ntfy_topic}?message={urllib.parse.quote(message)}",
                         data=file,
                         headers=headers
                     )
@@ -72,7 +71,7 @@ def send_ntfy_notification(config, container_name, message, title, file_name=Non
         else:
             response = requests.post(
                 f"{ntfy_url}/{ntfy_topic}", 
-                data=message_text,
+                data=message,
                 headers=headers
             )
         if response.status_code == 200:
@@ -84,6 +83,8 @@ def send_ntfy_notification(config, container_name, message, title, file_name=Non
 
 
 def send_notification(config: GlobalConfig, container_name, title, message, hostname=None, file_name=None):
+    message = message.replace(r"\n", "\n")
+
     # When multiple hosts are set the hostname is added to the title, when only one host is set the hostname is an empty string
     title = f"[{hostname}] - {title}" if hostname else title
     if (config.notifications and config.notifications.ntfy and config.notifications.ntfy.url and config.notifications.ntfy.topic):
