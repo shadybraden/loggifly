@@ -44,8 +44,8 @@ def send_ntfy_notification(config, container_name, message, title, file_name=Non
         "Title": title,
         "Tags": f"{ntfy_tags}",
         "Icon": "https://raw.githubusercontent.com/clemcer/loggifly/main/images/icon.png",
-        "Priority": f"{ntfy_priority}"
-    }
+            "Priority": f"{ntfy_priority}"
+        }
     if config.notifications.ntfy.token:
         headers["Authorization"] = f"Bearer {config.notifications.ntfy.token.get_secret_value()}"
     elif config.notifications.ntfy.username and config.notifications.ntfy.password:
@@ -83,7 +83,7 @@ def send_ntfy_notification(config, container_name, message, title, file_name=Non
 
 
 def send_notification(config: GlobalConfig, container_name, title, message, hostname=None, file_name=None):
-    message = message.replace(r"\n", "\n")
+    message = message.replace(r"\n", "\n").strip()
 
     # When multiple hosts are set the hostname is added to the title, when only one host is set the hostname is an empty string
     title = f"[{hostname}] - {title}" if hostname else title

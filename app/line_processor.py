@@ -75,12 +75,13 @@ class LogProcessor:
     COMPILED_STRICT_PATTERNS = [re.compile(pattern, re.ASCII) for pattern in STRICT_PATTERNS]
     COMPILED_FLEX_PATTERNS = [re.compile(pattern, re.ASCII) for pattern in FLEX_PATTERNS]
 
-    def __init__(self, logger, hostname, config: GlobalConfig, container, container_stop_event): 
+    def __init__(self, logger, hostname, config: GlobalConfig, container, container_stop_event, swarm_service=None): 
         self.logger = logger    
         self.hostname = hostname    # empty string if only one client else the hostname of the client 
         self.container_stop_event = container_stop_event
         self.container = container
         self.container_name = container.name
+        self.swarm_service=swarm_service
 
         self.patterns = []
         self.patterns_count = {pattern: 0 for pattern in self.__class__.COMPILED_STRICT_PATTERNS + self.__class__.COMPILED_FLEX_PATTERNS}
@@ -98,16 +99,27 @@ class LogProcessor:
         """
         self.config = config
         self.container_keywords = self.config.global_keywords.keywords.copy()
-        self.container_keywords.extend(keyword for keyword in self.config.containers[self.container_name].keywords if keyword not in self.container_keywords)
         self.container_keywords_with_attachment = self.config.global_keywords.keywords_with_attachment.copy()
-        self.container_keywords_with_attachment.extend(keyword for keyword in self.config.containers[self.container_name].keywords_with_attachment if keyword not in self.container_keywords_with_attachment)
-        self.container_action_keywords = [keyword for keyword in self.config.containers[self.container_name].action_keywords]
 
-        self.lines_number_attachment = self.config.containers[self.container_name].attachment_lines or self.config.settings.attachment_lines
+        if self.swarm_service:
+            self.container_keywords.extend(keyword for keyword in self.config.swarm_services[self.swarm_service].keywords if keyword not in self.container_keywords)
+            self.container_keywords_with_attachment.extend(keyword for keyword in self.config.swarm_services[self.swarm_service].keywords_with_attachment if keyword not in self.container_keywords_with_attachment)
+            self.container_action_keywords = []
+
+            self.lines_number_attachment = self.config.swarm_services[self.swarm_service].attachment_lines or self.config.settings.attachment_lines
+            self.notification_cooldown = self.config.swarm_services[self.swarm_service].notification_cooldown or self.config.settings.notification_cooldown
+            self.action_cooldown = self.config.swarm_services[self.swarm_service].action_cooldown or self.config.settings.action_cooldown or 300
+        else:
+            self.container_keywords.extend(keyword for keyword in self.config.containers[self.container_name].keywords if keyword not in self.container_keywords)
+            self.container_keywords_with_attachment.extend(keyword for keyword in self.config.containers[self.container_name].keywords_with_attachment if keyword not in self.container_keywords_with_attachment)
+            self.container_action_keywords = [keyword for keyword in self.config.containers[self.container_name].action_keywords]
+
+            self.lines_number_attachment = self.config.containers[self.container_name].attachment_lines or self.config.settings.attachment_lines
+            self.notification_cooldown = self.config.containers[self.container_name].notification_cooldown or self.config.settings.notification_cooldown
+            self.action_cooldown = self.config.containers[self.container_name].action_cooldown or self.config.settings.action_cooldown or 300
+
         self.multi_line_config = self.config.settings.multi_line_entries
-        self.notification_cooldown = self.config.containers[self.container_name].notification_cooldown or self.config.settings.notification_cooldown
         self.time_per_keyword = {}  
-        self.action_cooldown = self.config.containers[self.container_name].action_cooldown or self.config.settings.action_cooldown or 300
         self.last_action_time = None
 
         for keyword in self.container_keywords + self.container_keywords_with_attachment:
@@ -329,12 +341,10 @@ class LogProcessor:
                 message = log_line
         
             formatted_log_entry ="\n  -----  LOG-ENTRY  -----\n" + ' | ' + '\n | '.join(log_line.splitlines()) + "\n   -----------------------"
-            self.logger.info(f"The following keywords were found in {self.container_name}: {keywords_with_attachment_found + keywords_found}." 
-                if len(keywords_with_attachment_found + keywords_found) > 1 
-                else f"'{keywords_with_attachment_found[0]}' was found in {self.container_name}"
-                f" (A Log FIle will be attached)" if send_attachment else ""
-                f"{formatted_log_entry}"
-                )
+            self.logger.info(f"The following keywords were found in {self.container_name}: {keywords_found}."
+                        + (f" (A Log FIle will be attached)" if send_attachment else "")
+                        + f"{formatted_log_entry}"
+                        )
             if send_attachment:
                 self._send_message(message, keywords_with_attachment_found, send_attachment=True)
             else:
@@ -406,7 +416,7 @@ class LogProcessor:
         if send_attachment:
             file_name = self._log_attachment()
             if file_name and isinstance(file_name, str) and os.path.exists(file_name):
-                send_notification(self.config, self.container_name, message, title, hostname=self.hostname, file_name=file_name)     
+                send_notification(self.config, self.container_name, message=message, title=title, hostname=self.hostname, file_name=file_name)     
                 if os.path.exists(file_name):
                     os.remove(file_name)
                     self.logger.debug(f"The file {file_name} was deleted.")
@@ -414,7 +424,7 @@ class LogProcessor:
                     self.logger.debug(f"The file {file_name} does not exist.") 
 
         else:
-            send_notification(self.config, self.container_name, title, message, hostname=self.hostname)
+            send_notification(self.config, self.container_name, message=message, title=title, hostname=self.hostname)
 
     def _container_action(self, action):
         try: 

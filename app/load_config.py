@@ -65,7 +65,7 @@ class ActionKeywords(BaseModel):
         for kw in value:
             if isinstance(kw, dict):
                 if any(key not in allowed_keys for key in kw.keys()):
-                    logging.warning(f"Ignoring Error in config for action_keywords: Key not allowed for restart_keywords. Wrong Input: '{key}: {val}'. Allowed Keys: {allowed_keys}.")
+                    logging.warning(f"Ignoring Error in config for action_keywords: Key not allowed for restart_keywords. Wrong Input: '{kw}'. Allowed Keys: {allowed_keys}.")
                     continue
                 for key, val in kw.items():
                     if not val:
@@ -171,7 +171,8 @@ class Settings(BaseConfigModel):
     reload_config: bool = Field(True, description="Disable config reaload on config change")
 
 class GlobalConfig(BaseConfigModel):
-    containers: Dict[str, ContainerConfig]
+    containers: Optional[Dict[str, ContainerConfig]] = Field(default=None)
+    swarm_services: Optional[Dict[str, ContainerConfig]] = Field(default=None)
     global_keywords: GlobalKeywords
     notifications: NotificationsConfig
     settings: Settings
@@ -205,23 +206,16 @@ class GlobalConfig(BaseConfigModel):
     
     @model_validator(mode="after")
     def check_at_least_one(self) -> "GlobalConfig":
-        tmp_list = []
-        if not self.global_keywords.keywords and not self.global_keywords.keywords_with_attachment:
+        tmp_list = self.global_keywords.keywords + self.global_keywords.keywords_with_attachment
+        if not tmp_list:
             for k in self.containers:
                 tmp_list.extend(self.containers[k].keywords)
-        else:
-            return self
         if not tmp_list:
             raise ValueError("No keywords configured. You have to set keywords either per container or globally.")
+        if not self.containers and not self.swarm_services:
+            raise ValueError("You have to configure at least one container")
         return self
-
-    @field_validator("containers")
-    def validate_priority(cls, v):
-        if isinstance(v, dict):
-            if not v:
-                raise ValueError(f"You have to configure at least one container")
-        return v
-
+    
 
 def format_pydantic_error(e: ValidationError) -> str:
     error_messages = []

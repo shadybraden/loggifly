@@ -438,6 +438,62 @@ services:
 <br>
 
 
+## Docker Swarm (Experimental)
+
+>[!Important] Docker Swarm Support is still experimental because I have little to no experience with it and can not say for certain that it works flawlessly.
+If you notice anything or have suggestions let me know.
+
+Using Docker Swarm with LoggiFly is pretty straightforward. The environment variable `LOGGIFLY_MODE` has to be set to `swarm` and the config is passed to each worker through [Docker Configs](https://docs.docker.com/reference/cli/docker/config/)<br>
+
+```yaml
+version: "3.8"
+
+services:
+  logmonitor:
+    image: ghcr.io/clemcer/loggifly:latest
+    deploy:
+      mode: global  # runs on every node
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 5
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro 
+    environment:
+      - LOGGIFLY_MODE=swarm
+      - TZ=Europe/Berlin
+    configs:
+      - source: loggifly-config
+        target: /config/config.yaml  
+
+configs:
+  loggifly-config:
+    file: ./loggifly/config.yaml  # SET YOU CONFIG PATH HERE
+
+```
+
+In the `config.yaml` you can set services that should be monitored just like you would do with containers.
+```yaml
+swarm_services:
+  nginx:
+    keywords:
+      - error
+  redis:
+    keywords_with_attachment:
+      - fatal
+```
+
+If both nginx and redis are part of the same compose stack named 'my_service' you can also configure that service name and both redis and nginx will be monitored:
+```yaml
+swarm_services:
+  my_service:
+    keywords:
+      - error
+    keywords_with_attachment:
+      - fatal
+```
+
+
 ## 💡 Tips
 
 1. Ensure containers names **exactly match** your Docker **container names**. 

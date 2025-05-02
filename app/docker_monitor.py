@@ -1,7 +1,9 @@
 import logging
 import threading
+import socket
 import traceback
 import time
+import os
 import random
 import requests
 import docker
@@ -34,18 +36,10 @@ class DockerLogMonitor:
         self.hostname = hostname  # empty string if only one client is being monitored, otherwise the hostname of the client do differentiate between the hosts
         self.host = host
         self.config = config
-        # set up logging (hostname is added when there are multiple hosts)
-        self.logger = logging.getLogger(f"Monitor-{self.hostname}")
-        self.logger.handlers.clear()
-        handler = logging.StreamHandler()
-        formatter = (logging.Formatter(f'%(asctime)s - %(levelname)s - [Host: {self.hostname}] - %(message)s') 
-                     if self.hostname else logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
-        self.logger.setLevel(getattr(logging, self.config.settings.log_level.upper(), logging.INFO))
-        self.logger.propagate = False
+        self.swarm_mode = os.getenv("LOGGIFLY_MODE").strip().lower() == "swarm" if os.getenv("LOGGIFLY_MODE") else False
 
         self.selected_containers = [c for c in self.config.containers]
+        self.selected_swarm_services = [s for s in self.config.swarm_services]
         self.shutdown_event = threading.Event()
         self.cleanup_event = threading.Event()
         self.threads = []
@@ -56,6 +50,18 @@ class DockerLogMonitor:
         self.stream_connections = {}
         self.stream_connections_lock = threading.Lock()
         self.monitored_containers = {}
+
+    def init_logging(self):
+        """set up logging. The hostname is added when there are multiple hosts or in docker swarm to differentiate between them"""
+        self.logger = logging.getLogger(f"Monitor-{self.hostname}")
+        self.logger.handlers.clear()
+        handler = logging.StreamHandler()
+        formatter = (logging.Formatter(f'%(asctime)s - %(levelname)s - [Host: {self.hostname}] - %(message)s') 
+                     if self.hostname else logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
+        self.logger.setLevel(getattr(logging, self.config.settings.log_level.upper(), logging.INFO))
+        self.logger.propagate = False
 
     def _add_thread(self, thread):
         with self.threads_lock:
@@ -87,14 +93,48 @@ class DockerLogMonitor:
         else:
             self.logger.debug(f"Could not find log stream connection for container {container_name}")
 
+
+    def check_if_swarm_to_monitor(self, container):
+        labels = container.labels
+        service_name = labels.get("com.docker.swarm.service.name", "")
+        if service_name:
+            for configured in self.selected_swarm_services:
+                if service_name.startswith(configured):
+                    self.logger.debug(f"Trying to monitor container of swarm service: {service_name}")
+                    return configured
+        return None
+
     # This function is called from outside this class to start the monitoring
     def start(self, client):
         self.client = client
-        running_containers = self.client.containers.list()
-        containers_to_monitor = [c for c in running_containers if c.name in self.selected_containers]
-        for container in containers_to_monitor:
-            self._monitor_container(container)
-            self.monitored_containers[container.id] = container
+        if self.swarm_mode:
+            # Find out if manager or worker and set hostname to differentiate between the instances
+            swarm_info = client.info().get("Swarm")
+            node_id = swarm_info.get("NodeID")
+            try:
+                node = client.nodes.get(node_id)
+                manager = True if node.attrs["Spec"]["Role"] == "manager" else False
+            except Exception as e:
+                manager = False
+            try:
+                self.hostname = ("manager" if manager else "Worker") + "@" + self.client.info()["Name"]
+            except Exception as e:
+                self.hostname = ("manager" if manager else "Worker") + "@" + socket.gethostname()
+        self.init_logging()
+        if self.swarm_mode:
+            self.logger.info(f"Running in swarm mode. Manager={manager}")
+
+        for container in self.client.containers.list():
+            if self.swarm_mode:
+                # if the container belongs to a swarm service that is set in the config the service name has to be saved for later use 
+                swarm_service_name = self.check_if_swarm_to_monitor(container)
+                if swarm_service_name:
+                    self._monitor_container(container, swarm_service=swarm_service_name)
+                    self.monitored_containers[container.id] = container
+                    continue
+            if container.name in self.selected_containers:
+                self._monitor_container(container)
+                self.monitored_containers[container.id] = container
         self._watch_events()
         self._start_message()
 
@@ -106,6 +146,9 @@ class DockerLogMonitor:
         The function can also get called when there is not connection to the docker host. Then the config is updated but the changes are not applied.
         When LoggiFly reconnects to the docker host it calls this function with config=None to apply the changes.
         """
+        if self.swarm_mode:
+            self.logger.debug("Skipping config reload because of Swarm Mode")
+            return
         self.config = config if config is not None else self.config
         self.logger.setLevel(getattr(logging, self.config.settings.log_level.upper(), logging.INFO))
         self.selected_containers = [c for c in self.config.containers]
@@ -187,7 +230,7 @@ class DockerLogMonitor:
         time.sleep(random.uniform(0.9, 1.2) * error_count) # to prevent all threads from trying to reconnect at the same time
         return error_count, last_error_time, False    
 
-    def _monitor_container(self, container):    
+    def _monitor_container(self, container, swarm_service=None):    
         def check_container(container_start_time, error_count):
             """
             Check if the container is still running and whether it is still the same container (by comparing the initial start time with the current one).
@@ -231,7 +274,7 @@ class DockerLogMonitor:
                 processor._start_flush_thread()
             else:
                 container_stop_event = threading.Event()
-                processor = LogProcessor(self.logger, self.hostname, self.config, container, container_stop_event)
+                processor = LogProcessor(self.logger, self.hostname, self.config, container, container_stop_event, swarm_service=swarm_service)
                 self._add_processor_instance(processor, container_stop_event, container.name)
 
             container_stop_event.clear()
@@ -303,10 +346,11 @@ class DockerLogMonitor:
                             break
                         container = self.client.containers.get(event["Actor"]["ID"])
                         if event.get("Action") == "start":
-                            if container.name in self.selected_containers:
+                            swarm_label = self.check_if_swarm_to_monitor(container)
+                            if swarm_label or container.name in self.selected_containers:
+                                self._monitor_container(container, swarm_service=swarm_label)
                                 self.logger.info(f"Monitoring new container: {container.name}")
                                 send_notification(self.config, "Loggifly", "LoggiFly", f"Monitoring new container: {container.name}", hostname=self.hostname)
-                                self._monitor_container(container)
                                 self.monitored_containers[container.id] = container
                         elif event.get("Action") == "stop":
                             if container.id in self.monitored_containers:
@@ -315,7 +359,7 @@ class DockerLogMonitor:
                                 self._close_stream_connection(container.name)
 
                 except docker.errors.NotFound as e:
-                    self.logger.error(F"EDocker Eventvent-Handler: Container {container} not found: {e}")
+                    self.logger.error(f"Docker Event Handler: Container {container} not found: {e}")
                 except Exception as e:  
                     error_count, last_error_time, too_many_errors = self._handle_error(error_count, last_error_time)
                     if error_count == 1:
