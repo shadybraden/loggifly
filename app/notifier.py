@@ -2,6 +2,7 @@ import requests
 import base64
 import logging
 import urllib.parse
+import json
 import apprise
 from load_config import GlobalConfig
 
@@ -82,6 +83,23 @@ def send_ntfy_notification(config, container_name, message, title, file_name=Non
         logging.error("Error while trying to connect to ntfy: %s", e)
 
 
+def send_webhook(json_data, url, headers):
+    try: 
+        response = requests.post(
+            url=url,
+            headers=headers,
+            json=json_data,
+            timeout=10
+            )
+        if response.status_code == 200:
+            logging.info(f"Webhook sent successfully.")
+            logging.debug(f"Webhook Response: {json.dumps(response.json(), indent=2)}")
+        else:
+            logging.error("Error while trying to send ntfy-notification: %s", response.text)
+    except requests.RequestException as e:
+        logging.error(f"Error trying to send webhook to url: {url}, headers: {headers}: %s", e)
+
+
 def send_notification(config: GlobalConfig, container_name, title, message, hostname=None, file_name=None):
     message = message.replace(r"\n", "\n").strip()
 
@@ -92,5 +110,11 @@ def send_notification(config: GlobalConfig, container_name, title, message, host
     if (config.notifications and config.notifications.apprise and config.notifications.apprise.url):
         apprise_url = config.notifications.apprise.url.get_secret_value()
         send_apprise_notification(apprise_url, container_name, message, title, file_name)
-    
 
+    if (config.notifications and config.notifications.webhook and config.notifications.webhook.url):
+
+        json_data = {"container": container_name, "title": title, "message": message, "host": hostname}
+
+        webhook_url = config.notifications.webhook.url
+        webhook_headers = config.notifications.webhook.headers
+        send_webhook(json_data, webhook_url, webhook_headers)
