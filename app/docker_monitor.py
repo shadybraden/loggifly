@@ -350,7 +350,8 @@ class DockerLogMonitor:
                             if swarm_label or container.name in self.selected_containers:
                                 self._monitor_container(container, swarm_service=swarm_label)
                                 self.logger.info(f"Monitoring new container: {container.name}")
-                                send_notification(self.config, "Loggifly", "LoggiFly", f"Monitoring new container: {container.name}", hostname=self.hostname)
+                                if not self.config.disable_container_event_message:
+                                    send_notification(self.config, "Loggifly", "LoggiFly", f"Monitoring new container: {container.name}", hostname=self.hostname)
                                 self.monitored_containers[container.id] = container
                         elif event.get("Action") == "stop":
                             if container.id in self.monitored_containers:

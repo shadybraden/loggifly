@@ -168,6 +168,7 @@ class Settings(BaseConfigModel):
     disable_start_message: bool = Field(False, description="Disable startup notification")
     disable_shutdown_message: bool = Field(False, description="Disable shutdown notification")
     disable_config_reload_message: bool = Field(False, description="Disable config reload notification")
+    disable_container_event_message: bool = Field(False, description="Disable notification on container stops/starts")
     reload_config: bool = Field(True, description="Disable config reaload on config change")
 
 class GlobalConfig(BaseConfigModel):
@@ -287,7 +288,7 @@ def load_config(official_path="/config/config.yaml"):
     """
     -------------------------LOAD ENVIRONMENT VARIABLES---------------------
     """
-    env_config = { "notifications": {}, "settings": {}, "global_keywords": {}, "containers": {}}
+    env_config = { "notifications": {}, "settings": {}, "global_keywords": {}, "containers": {}, "swarm_services": {}}
     settings_values = {
         "log_level": os.getenv("LOG_LEVEL"),
         "attachment_lines": os.getenv("ATTACHMENT_LINES"),
@@ -297,6 +298,7 @@ def load_config(official_path="/config/config.yaml"):
         "disable_start_message": os.getenv("DISABLE_START_MESSAGE"),
         "disable_restart_message": os.getenv("DISABLE_CONFIG_RELOAD_MESSAGE"),
         "disable_shutdown_message": os.getenv("DISABLE_SHUTDOWN_MESSAGE"),
+        "disable_container_event_message": os.getenv("DISABLE_CONTAINER_EVENT_MESSAGE"),
         "action_cooldown": os.getenv("ACTION_COOLDOWN")
         } 
     ntfy_values =  {
@@ -320,6 +322,12 @@ def load_config(official_path="/config/config.yaml"):
         for c in os.getenv("CONTAINERS", "").split(","):
             c = c.strip()
             env_config["containers"][c] = {}
+
+    if os.getenv("SWARM_SERVICES"):
+        for s in os.getenv("SWARM_SERVICES", "").split(","):
+            s = s.strip()
+            env_config["swarm_services"][s] = {}
+
     if any(ntfy_values.values()):
         env_config["notifications"]["ntfy"] = ntfy_values
         yaml_config["notifications"]["ntfy"] = {}
@@ -332,7 +340,6 @@ def load_config(official_path="/config/config.yaml"):
     for key, value in settings_values.items(): 
         if value is not None:
             env_config["settings"][key] = value
-
     # Merge environment variables and yaml config
     merged_config = merge_yaml_and_env(yaml_config, env_config)
     # Validate the merged configuration with Pydantic
