@@ -80,8 +80,8 @@ class LogProcessor:
         self.hostname = hostname    # empty string if only one client else the hostname of the client 
         self.container_stop_event = container_stop_event
         self.container = container
-        self.container_name = container.name
         self.swarm_service=swarm_service
+        self.container_name = self.swarm_service if self.swarm_service else self.container.name
 
         self.patterns = []
         self.patterns_count = {pattern: 0 for pattern in self.__class__.COMPILED_STRICT_PATTERNS + self.__class__.COMPILED_FLEX_PATTERNS}
@@ -140,9 +140,9 @@ class LogProcessor:
                 except Exception as e:
                     self.logger.error(f"Could not read logs of Container {self.container_name}: {e}")
                 if self.valid_pattern:
-                    self.logger.debug(f"{self.container.name}: Mode: Multi-Line. Found starting pattern(s) in logs.")
+                    self.logger.debug(f"{self.container_name}: Mode: Multi-Line. Found starting pattern(s) in logs.")
                 else:
-                    self.logger.debug(f"{self.container.name}: Mode: Single-Line. Could not find starting pattern in the logs. Continuing the search in the next {self.line_limit - self.line_count} lines")
+                    self.logger.debug(f"{self.container_name}: Mode: Single-Line. Could not find starting pattern in the logs. Continuing the search in the next {self.line_limit - self.line_count} lines")
         
             self.buffer = []
             self.log_stream_timeout = 1 # self.config.settings.flush_timeout Not an supported setting (yet)
@@ -414,20 +414,20 @@ class LogProcessor:
         """Adapt the notification title and call the send_notification function from notifier.py"""
         if isinstance(keywords, list) and len(keywords) == 1:
             keyword = keywords[0]
-            title = f"'{keyword}' found in {self.container.name}"
+            title = f"'{keyword}' found in {self.container_name}"
         elif isinstance(keywords, list) and len(keywords) > 2:
             joined_keywords = ', '.join(f"'{word}'" for word in keywords)
-            title = f"The following keywords were found in {self.container.name}: {joined_keywords}"
+            title = f"The following keywords were found in {self.container_name}: {joined_keywords}"
         elif isinstance(keywords, list) and len(keywords) == 2:
             joined_keywords = ' and '.join(f"'{word}'" for word in keywords)
-            title = f"{joined_keywords} found in {self.container.name}"
+            title = f"{joined_keywords} found in {self.container_name}"
         else:
-            title = f"{self.container.name}"
+            title = f"{self.container_name}"
 
         if isinstance(keywords, str):
             keyword = keywords
         if action:
-            title = f"{'Stopping' if action == 'stop' else 'Restarting'} {self.container.name} because '{keyword}' was found"
+            title = f"{'Stopping' if action == 'stop' else 'Restarting'} {self.container_name} because '{keyword}' was found"
 
         if send_attachment:
             file_name = self._log_attachment()
