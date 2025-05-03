@@ -181,25 +181,20 @@ class DockerLogMonitor:
             self.logger.error(f"Error handling config changes: {e}")
 
     def _start_message(self, config_reload=False):
-        monitored_containers_message = "\n - ".join(c.name for id, c in self.monitored_containers.items())
+        monitored_containers = "\n - ".join(c.name for id, c in self.monitored_containers.items())
         unmonitored_containers = [c for c in self.selected_containers if c not in [c.name for id, c in self.monitored_containers.items()]]
-        unmonitored_containers_message = "\n - ".join(unmonitored_containers) if unmonitored_containers else ""
-        self.logger.info(f"These containers are being monitored:\n - {monitored_containers_message}")
-        if unmonitored_containers:
-            unmonitored_containers_str = "\n - ".join(unmonitored_containers)
-            self.logger.info(f"These selected Containers are not running:\n - {unmonitored_containers_str}")
-        else:
-            unmonitored_containers_str = ""
-
-        if not self.config.settings.disable_start_message and (config_reload and not self.config.settings.disable_config_reload_message):
+        message = f"These containers are being monitored:\n - {monitored_containers}"
+        message = message + (f"\n\nThese selected containers are not running:\n - " + '\n - '.join(unmonitored_containers)) if unmonitored_containers else ""
+        message = (f"The Config File was reloaded." if config_reload else f"LoggiFly started.") + "\n" + message
+        self.logger.info(message)
+        if ((self.config.settings.disable_start_message is False and config_reload is False)
+            or (config_reload is True and self.config.settings.disable_config_reload_message is False)):
             send_notification(self.config, 
                               container_name="LoggiFly", 
                               title="LoggiFly", 
                               hostname=self.hostname,
-                              message=f"The Config File was reloaded. LoggiFly is monitoring these selected Containers:" if config_reload
-                              else f"LoggiFly is running and monitoring these selected Containers:"
-                              + f"\n - {monitored_containers_message}\nThese selected Containers are not running:\n - {unmonitored_containers_message}", 
-                              )
+                              message=message
+                            )   
 
     def _handle_error(self, error_count, last_error_time, container_name=None):
         """
