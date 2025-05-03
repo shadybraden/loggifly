@@ -50,6 +50,7 @@ class DockerLogMonitor:
         self.stream_connections = {}
         self.stream_connections_lock = threading.Lock()
         self.monitored_containers = {}
+        self.monitored_swarm_services = {}
 
     def init_logging(self):
         """set up logging. The hostname is added when there are multiple hosts or in docker swarm to differentiate between them"""
@@ -131,6 +132,7 @@ class DockerLogMonitor:
                 if swarm_service_name:
                     self._monitor_container(container, swarm_service=swarm_service_name)
                     self.monitored_containers[container.id] = container
+                    self.monitored_swarm_services[container.id] = swarm_service_name
                     continue
             if container.name in self.selected_containers:
                 self._monitor_container(container)
@@ -181,11 +183,22 @@ class DockerLogMonitor:
             self.logger.error(f"Error handling config changes: {e}")
 
     def _start_message(self, config_reload=False):
-        monitored_containers = "\n - ".join(c.name for id, c in self.monitored_containers.items())
+        monitored_containers_message = "\n - ".join(c.name for id, c in self.monitored_containers.items())
         unmonitored_containers = [c for c in self.selected_containers if c not in [c.name for id, c in self.monitored_containers.items()]]
-        message = f"These containers are being monitored:\n - {monitored_containers}"
-        message = message + (f"\n\nThese selected containers are not running:\n - " + '\n - '.join(unmonitored_containers)) if unmonitored_containers else ""
+        message = (f"These containers are being monitored:\n - {monitored_containers_message}" if self.monitored_containers 
+                   else f"No selected containers are running. Waiting for new containers...")
+        message = message + ((f"\n\nThese selected containers are not running:\n - " + '\n - '.join(unmonitored_containers)) if unmonitored_containers else "")
+        if self.swarm_mode:
+            monitored_swarm_services = []
+            for c in self.monitored_containers.values():
+                swarm_label = self.check_if_swarm_to_monitor(c)
+                if swarm_label:
+                    monitored_swarm_services.append(swarm_label)
+            unmonitored_swarm_services = [s for s in self.selected_swarm_services if s not in monitored_swarm_services]
+            message = message + ((f"\n\nThese selected Swarm Services are not being monitored:\n - " + '\n - '.join(unmonitored_swarm_services)) if unmonitored_swarm_services else "")
+        
         message = (f"The Config File was reloaded." if config_reload else f"LoggiFly started.") + "\n" + message
+
         self.logger.info(message)
         if ((self.config.settings.disable_start_message is False and config_reload is False)
             or (config_reload is True and self.config.settings.disable_config_reload_message is False)):
