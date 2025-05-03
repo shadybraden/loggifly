@@ -432,7 +432,7 @@ class LogProcessor:
         if send_attachment:
             file_name = self._log_attachment()
             if file_name and isinstance(file_name, str) and os.path.exists(file_name):
-                send_notification(self.config, self.container_name, message=message, title=title, hostname=self.hostname, file_name=file_name)     
+                send_notification(self.config, self.container_name, keywords=keywords, message=message, title=title, hostname=self.hostname, file_name=file_name)     
                 if os.path.exists(file_name):
                     os.remove(file_name)
                     self.logger.debug(f"The file {file_name} was deleted.")
@@ -440,7 +440,7 @@ class LogProcessor:
                     self.logger.debug(f"The file {file_name} does not exist.") 
 
         else:
-            send_notification(self.config, self.container_name, message=message, title=title, hostname=self.hostname)
+            send_notification(self.config, self.container_name, keywords=keywords, message=message, title=title, hostname=self.hostname)
 
     def _container_action(self, action):
         try: 

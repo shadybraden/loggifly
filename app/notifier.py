@@ -100,7 +100,7 @@ def send_webhook(json_data, url, headers):
         logging.error(f"Error trying to send webhook to url: {url}, headers: {headers}: %s", e)
 
 
-def send_notification(config: GlobalConfig, container_name, title, message, hostname=None, file_name=None):
+def send_notification(config: GlobalConfig, container_name, title, message, keywords=None, hostname=None, file_name=None):
     message = message.replace(r"\n", "\n").strip()
 
     # When multiple hosts are set the hostname is added to the title, when only one host is set the hostname is an empty string
@@ -113,7 +113,7 @@ def send_notification(config: GlobalConfig, container_name, title, message, host
 
     if (config.notifications and config.notifications.webhook and config.notifications.webhook.url):
 
-        json_data = {"container": container_name, "title": title, "message": message, "host": hostname}
+        json_data = {"container": container_name, "keywords": keywords, "title": title, "message": message, "host": hostname}
 
         webhook_url = config.notifications.webhook.url
         webhook_headers = config.notifications.webhook.headers

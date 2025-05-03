@@ -289,7 +289,7 @@ def load_config(official_path="/config/config.yaml"):
             logging.info(f"The path {path} does not exist.")
 
     if yaml_config is None:
-        logging.warning(f"The config.yaml file was not found.")
+        logging.warning(f"The config.yaml could not be loaded.")
         yaml_config = {}
     else:
         logging.info(f"The config.yaml file was found in {path}.")

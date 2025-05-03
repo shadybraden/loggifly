@@ -75,8 +75,6 @@ class ConfigHandler(FileSystemEventHandler):
 
     def _trigger_reload(self):
         logging.info("Config change detected, reloading config...")
-        if not self.config.settings.disable_config_reload_message:
-            send_notification(self.config, "LoggiFly", "LoggiFly", "Reloading Config...")
         try:
             self.config, _ = load_config()
         except ValidationError as e:
