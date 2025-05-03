@@ -346,11 +346,11 @@ class DockerLogMonitor:
                             break
                         container = self.client.containers.get(event["Actor"]["ID"])
                         if event.get("Action") == "start":
-                            swarm_label = self.check_if_swarm_to_monitor(container)
+                            swarm_label = self.check_if_swarm_to_monitor(container) if self.swarm_mode else None
                             if swarm_label or container.name in self.selected_containers:
                                 self._monitor_container(container, swarm_service=swarm_label)
                                 self.logger.info(f"Monitoring new container: {container.name}")
-                                if not self.config.disable_container_event_message:
+                                if self.config.settings.disable_container_event_message is False:
                                     send_notification(self.config, "Loggifly", "LoggiFly", f"Monitoring new container: {container.name}", hostname=self.hostname)
                                 self.monitored_containers[container.id] = container
                         elif event.get("Action") == "stop":

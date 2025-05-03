@@ -125,6 +125,8 @@ class LogProcessor:
         for keyword in self.container_keywords + self.container_keywords_with_attachment:
             if isinstance(keyword, dict) and keyword.get("regex") is not None:
                 self.time_per_keyword[keyword["regex"]] = 0
+            elif isinstance(keyword, dict) and keyword.get("keyword") is not None:
+                self.time_per_keyword[keyword["keyword"]] = 0
             else:
                 self.time_per_keyword[keyword] = 0  
                     

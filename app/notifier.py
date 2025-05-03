@@ -93,9 +93,9 @@ def send_webhook(json_data, url, headers):
             )
         if response.status_code == 200:
             logging.info(f"Webhook sent successfully.")
-            logging.debug(f"Webhook Response: {json.dumps(response.json(), indent=2)}")
+            #logging.debug(f"Webhook Response: {json.dumps(response.json(), indent=2)}")
         else:
-            logging.error("Error while trying to send ntfy-notification: %s", response.text)
+            logging.error("Error while trying to send POST request to custom webhook: %s", response.text)
     except requests.RequestException as e:
         logging.error(f"Error trying to send webhook to url: {url}, headers: {headers}: %s", e)
 
