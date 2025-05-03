@@ -39,7 +39,7 @@ class KeywordBase(BaseModel):
                         keys = list(kw.keys())
 
                         if "regex" in keys:
-                            if any(key not in ["regex", "template", "json_template"] for key in keys) or len(keys) > 2:
+                            if any(key not in ["regex", "template", "json_template", "hide_pattern_in_title"] for key in keys):
                                 logging.warning(f"Ignoring Error in config for {field}: '{kw}'. Only 'keyword', 'json_template' or 'template' is allowed as additional key for regex pattern.")
                                 continue
                         elif "keyword" in keys:
