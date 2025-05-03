@@ -36,16 +36,23 @@ class KeywordBase(BaseModel):
                 converted = []
                 for kw in values[field]:
                     if isinstance(kw, dict):
-                        allowed_keys = {"keyword", "regex", "template"}
                         keys = list(kw.keys())
-                        if any(key not in allowed_keys for key in keys):
-                            logging.warning(f"Ignoring Error in config for {field}: '{kw}'. Only 'keyword', 'regex' or 'template' is allowed as a key.")
-                            continue
+
+                        if "regex" in keys:
+                            if any(key not in ["regex", "template", "json_template"] for key in keys) or len(keys) > 2:
+                                logging.warning(f"Ignoring Error in config for {field}: '{kw}'. Only 'keyword', 'json_template' or 'template' is allowed as additional key for regex pattern.")
+                                continue
+                        elif "keyword" in keys:
+                            if any(key not in ["keyword", "json_template"] for key in keys):
+                                logging.warning(f"Ignoring Error in config for {field}: '{kw}'. Only 'json_template' is allowed as additional key for 'keyword'.")
+                                continue
                         else:
-                            for key in keys:
-                                if isinstance(kw[key], int):
-                                    kw[key] = str(kw[key])
-                            converted.append(kw)
+                            logging.warning(f"Ignoring Error in config for {field}: '{kw}'. Only 'keyword' or 'regex' are allowed as keys.")
+                            continue
+                        for key in keys:
+                            if isinstance(kw[key], int):
+                                kw[key] = str(kw[key])
+                        converted.append(kw)
                     else:
                         try:
                             converted.append(str(kw))
@@ -282,7 +289,7 @@ def load_config(official_path="/config/config.yaml"):
             logging.info(f"The path {path} does not exist.")
 
     if yaml_config is None:
-        logging.warning(f"The config.yaml file was not found. Only using environment variables.")
+        logging.warning(f"The config.yaml file was not found.")
         yaml_config = {}
     else:
         logging.info(f"The config.yaml file was found in {path}.")

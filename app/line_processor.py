@@ -275,7 +275,8 @@ class LogProcessor:
             if keyword.get("regex") is not None:
                 regex_keyword = keyword["regex"]
                 if ignore_keyword_time or time.time() - self.time_per_keyword.get(regex_keyword) >= int(self.notification_cooldown):
-                    if re.search(regex_keyword, log_line, re.IGNORECASE):
+                    match = re.search(regex_keyword, log_line, re.IGNORECASE)
+                    if match:
                         self.time_per_keyword[regex_keyword] = time.time()
                         return f"Regex: {regex_keyword}"
             elif keyword.get("keyword") is not None:
@@ -294,34 +295,52 @@ class LogProcessor:
         or the _container_action function to restart/stop the container
         """
 
-        def message_from_template(template, log_line):
+        def message_from_template(keyword, log_line):
             message = log_line
-            try:
-                json_log_entry = json.loads(log_line)
-                json_template_fields = [f for _, f, _, _ in string.Formatter().parse(template) if f]
-                json_log_data = {k: json_log_entry.get(k, "") for k in json_template_fields}
-                message = template.format(**json_log_data)
 
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                self.logger.error(f"Error parsing log line as JSON: {log_line}")
-            except KeyError as e:
-                self.logger.error(f"KeyError: {e} in template: {template} with log line: {log_line}")
-            except Exception as e:
-                self.logger.error(f"Unexpected Error parsing log line as JSON: {e}")
-                self.logger.error(f"Details: {traceback.format_exc()}") 
+            if keyword.get("json_template") is not None:
+                template = keyword.get("json_template")
+                try:
+                    json_log_entry = json.loads(log_line)
+                    json_template_fields = [f for _, f, _, _ in string.Formatter().parse(template) if f]
+                    json_log_data = {k: json_log_entry.get(k, "") for k in json_template_fields}
+                    message = template.format(**json_log_data)
+
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    self.logger.error(f"Error parsing log line as JSON: {log_line}")
+                except KeyError as e:
+                    self.logger.error(f"KeyError: {e} in template: {template} with log line: {log_line}")
+                except Exception as e:
+                    self.logger.error(f"Unexpected Error parsing log line as JSON: {e}")
+                    self.logger.error(f"Details: {traceback.format_exc()}") 
+
+            elif keyword.get("template") is not None and "regex" in keyword:
+                template = keyword.get("template")
+                match = re.search(keyword["regex"], log_line, re.IGNORECASE)
+                if match:
+                    groups = match.groupdict()
+                    groups.setdefault("original_log_line", log_line) 
+                    try:
+                        return template.format(**groups)
+                    except KeyError as e:
+                        self.logger.error(f"Key Error for template '{template}': {e}")
+                    except Exception as e:
+                        self.logger.error(f"Error for template {template}: {e}")
             return message
 
         keywords_with_attachment_found = [] 
         keywords_found = []
         template = None
         send_attachment = False
+        message = log_line
         # Search for normal keywords
         for keyword in self.container_keywords:
             found = self._search_keyword(log_line, keyword)
             if found:
                 keywords_found.append(found)
-                if isinstance(keyword, dict) and keyword.get("template") is not None:
-                    template = keyword.get("template")
+                if isinstance(keyword, dict) and (keyword.get("template") is not None or keyword.get("json_template") is not None):
+                    self.logger.debug(f"Trying to use template: for '{keyword}'")
+                    message = message_from_template(keyword, log_line)
 
         # Search for Keywords with attachment
         for keyword in self.container_keywords_with_attachment:
@@ -329,17 +348,12 @@ class LogProcessor:
             if found:
                 keywords_found.append(found)    
                 send_attachment = True
-                if isinstance(keyword, dict) and keyword.get("template") is not None:
-                    template = keyword.get("template")
+                if isinstance(keyword, dict) and (keyword.get("template") is not None or keyword.get("json_template") is not None):
+                    self.logger.debug(f"Trying to use template: for '{keyword}'")
+                    message = message_from_template(keyword, log_line)
 
         # Trigger notification if keywords have been found
-        if keywords_found:
-            if template is not None:
-                self.logger.debug(f"Trying to use this template: '{template}'")
-                message = message_from_template(template, log_line)
-            else:
-                message = log_line
-        
+        if keywords_found:        
             formatted_log_entry ="\n  -----  LOG-ENTRY  -----\n" + ' | ' + '\n | '.join(log_line.splitlines()) + "\n   -----------------------"
             self.logger.info(f"The following keywords were found in {self.container_name}: {keywords_found}."
                         + (f" (A Log FIle will be attached)" if send_attachment else "")

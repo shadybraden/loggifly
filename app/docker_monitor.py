@@ -308,7 +308,7 @@ class DockerLogMonitor:
                     error_count, last_error_time, too_many_errors = self._handle_error(error_count, last_error_time, container.name)
                     if error_count == 1: # log error only once
                         self.logger.error("Error trying to monitor %s: %s", container.name, e)
-                        #self.logger.debug(traceback.format_exc())
+                        self.logger.debug(traceback.format_exc())
                 finally:
                     if self.shutdown_event.is_set() or too_many_errors or not_found_error:  
                         break
