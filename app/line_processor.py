@@ -414,7 +414,8 @@ class LogProcessor:
     def _send_message(self, message, keywords_found, send_attachment=False, action=None):
         """Adapt the notification title and call the send_notification function from notifier.py"""
         def get_notification_title():
-            if self.notification_title.strip().lower() != "default":
+            if self.notification_title.strip().lower() != "default" and action is None:
+                template = ""
                 try:
                     keywords = ', '.join(f"'{word}'" for word in keywords_found)
                     template = self.notification_title.strip()
@@ -424,9 +425,9 @@ class LogProcessor:
                     title = template.format(**configured_template_fields)
                     return title
                 except KeyError as e:
-                    self.logger.error(f"Missing key in template: {e}. Template requires keys that weren't provided.")
+                    self.logger.error(f"Missing key in template: {template}. Template requires keys that weren't provided. Error: {e}")
                 except Exception as e:
-                    self.logger.error(f"Error trying to apply your template for the notification title: {e}")
+                    self.logger.error(f"Error trying to apply this template for the notification title: {template} {e}")
 
             if isinstance(keywords_found, list):
                 if len(keywords_found) == 1:

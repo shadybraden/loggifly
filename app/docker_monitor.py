@@ -50,10 +50,9 @@ class DockerLogMonitor:
         self.stream_connections = {}
         self.stream_connections_lock = threading.Lock()
         self.monitored_containers = {}
-        self.monitored_swarm_services = {}
 
     def init_logging(self):
-        """set up logging. The hostname is added when there are multiple hosts or in docker swarm to differentiate between them"""
+        """The hostname is added to logs when there are multiple hosts or when using docker swarm to differentiate between the hosts/nodes"""
         self.logger = logging.getLogger(f"Monitor-{self.hostname}")
         self.logger.handlers.clear()
         handler = logging.StreamHandler()
@@ -84,8 +83,8 @@ class DockerLogMonitor:
         stream = self.stream_connections.get(container_name)
         container_stop_event = self.line_processor_instances[container_name]["container_stop_event"]
         container_stop_event.set()
-        self.logger.info(f"Closing Log Stream connection for {container_name}")
         if stream:
+            self.logger.info(f"Closing Log Stream connection for {container_name}")
             try: 
                 stream.close()
                 self.stream_connections.pop(container_name)
@@ -95,13 +94,12 @@ class DockerLogMonitor:
             self.logger.debug(f"Could not find log stream connection for container {container_name}")
 
 
-    def check_if_swarm_to_monitor(self, container):
+    def _check_if_swarm_to_monitor(self, container):
         labels = container.labels
         service_name = labels.get("com.docker.swarm.service.name", "")
         if service_name:
             for configured in self.selected_swarm_services:
                 if service_name.startswith(configured):
-                    self.logger.debug(f"Trying to monitor container of swarm service: {service_name}")
                     return configured
         return None
 
@@ -110,29 +108,34 @@ class DockerLogMonitor:
         self.client = client
         if self.swarm_mode:
             # Find out if manager or worker and set hostname to differentiate between the instances
-            swarm_info = client.info().get("Swarm")
-            node_id = swarm_info.get("NodeID")
             try:
-                node = client.nodes.get(node_id)
-                manager = True if node.attrs["Spec"]["Role"] == "manager" else False
+                swarm_info = client.info().get("Swarm")
+                node_id = swarm_info.get("NodeID")
             except Exception as e:
-                manager = False
-            try:
-                self.hostname = ("manager" if manager else "Worker") + "@" + self.client.info()["Name"]
-            except Exception as e:
-                self.hostname = ("manager" if manager else "worker") + "@" + socket.gethostname()
+                self.logger.error(f"Could not get info via docker client. Needed to get info about swarm role (manager/worker)")
+                node_id = None
+            if node_id:
+                try:
+                    node = client.nodes.get(node_id)
+                    manager = True if node.attrs["Spec"]["Role"] == "manager" else False
+                except Exception as e:
+                    manager = False
+                try:
+                    self.hostname = ("manager" if manager else "Worker") + "@" + self.client.info()["Name"]
+                except Exception as e:
+                    self.hostname = ("manager" if manager else "worker") + "@" + socket.gethostname()
         self.init_logging()
         if self.swarm_mode:
-            self.logger.info(f"Running in swarm mode. Manager={manager}")
+            self.logger.info(f"Running in swarm mode.")
 
         for container in self.client.containers.list():
             if self.swarm_mode:
                 # if the container belongs to a swarm service that is set in the config the service name has to be saved for later use 
-                swarm_service_name = self.check_if_swarm_to_monitor(container)
+                swarm_service_name = self._check_if_swarm_to_monitor(container)
                 if swarm_service_name:
+                    self.logger.debug(f"Trying to monitor container of swarm service: {swarm_service_name}")
                     self._monitor_container(container, swarm_service=swarm_service_name)
                     self.monitored_containers[container.id] = container
-                    self.monitored_swarm_services[container.id] = swarm_service_name
                     continue
             if container.name in self.selected_containers:
                 self._monitor_container(container)
@@ -191,7 +194,7 @@ class DockerLogMonitor:
         if self.swarm_mode:
             monitored_swarm_services = []
             for c in self.monitored_containers.values():
-                swarm_label = self.check_if_swarm_to_monitor(c)
+                swarm_label = self._check_if_swarm_to_monitor(c)
                 if swarm_label:
                     monitored_swarm_services.append(swarm_label)
             unmonitored_swarm_services = [s for s in self.selected_swarm_services if s not in monitored_swarm_services]
@@ -357,7 +360,7 @@ class DockerLogMonitor:
                             break
                         container = self.client.containers.get(event["Actor"]["ID"])
                         if event.get("Action") == "start":
-                            swarm_label = self.check_if_swarm_to_monitor(container) if self.swarm_mode else None
+                            swarm_label = self._check_if_swarm_to_monitor(container) if self.swarm_mode else None
                             if swarm_label or container.name in self.selected_containers:
                                 self._monitor_container(container, swarm_service=swarm_label)
                                 self.logger.info(f"Monitoring new container: {container.name}")
