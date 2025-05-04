@@ -40,11 +40,11 @@ class KeywordBase(BaseModel):
 
                         if "regex" in keys:
                             if any(key not in ["regex", "template", "json_template", "hide_pattern_in_title"] for key in keys):
-                                logging.warning(f"Ignoring Error in config for {field}: '{kw}'. Only 'keyword', 'json_template' or 'template' is allowed as additional key for regex pattern.")
+                                logging.warning(f"Ignoring Error in config for {field}: '{kw}'. Only 'json_template', 'template' and 'hide_pattern_in_title' are allowed as additional keys for regex pattern.")
                                 continue
                         elif "keyword" in keys:
                             if any(key not in ["keyword", "json_template"] for key in keys):
-                                logging.warning(f"Ignoring Error in config for {field}: '{kw}'. Only 'json_template' is allowed as additional key for 'keyword'.")
+                                logging.warning(f"Ignoring Error in config for {field}: '{kw}'. Only 'json_template' and 'hide_pattern_in_title' are allowed as additional keys for 'keyword'.")
                                 continue
                         else:
                             logging.warning(f"Ignoring Error in config for {field}: '{kw}'. Only 'keyword' or 'regex' are allowed as keys.")
@@ -170,7 +170,7 @@ class NotificationsConfig(BaseConfigModel):
     @model_validator(mode="after")
     def check_at_least_one(self) -> "NotificationsConfig":
         if self.ntfy is None and self.apprise is None and self.webhook is None:
-            raise ValueError("At least on of these has to be configured: 'apprise' / 'ntfy' / 'custom_endpoint'")
+            raise ValueError("At least on of these has to be configured: 'apprise' / 'ntfy' / 'webhook'")
         return self
 
 class Settings(BaseConfigModel):    
@@ -350,13 +350,13 @@ def load_config(official_path="/config/config.yaml"):
 
     if any(ntfy_values.values()):
         env_config["notifications"]["ntfy"] = ntfy_values
-        yaml_config["notifications"]["ntfy"] = {}
+        yaml_config["notifications"]["ntfy"] = {} if yaml_config["notifications"].get("ntfy") is None else yaml_config["notifications"]["ntfy"]
     if apprise_values["url"]: 
         env_config["notifications"]["apprise"] = apprise_values
-        yaml_config["notifications"]["apprise"] = {}
+        yaml_config["notifications"]["apprise"] = {} if yaml_config["notifications"].get("apprise") is None else yaml_config["notifications"]["apprise"]
     if webhook_values.get("url"):
         env_config["notifications"]["webhook"] = webhook_values
-        yaml_config["notifications"]["webhook"] = {}
+        yaml_config["notifications"]["webhook"] = {} if yaml_config["notifications"].get("webhook") is None else yaml_config["notifications"]["webhook"]
 
     for k, v in global_keywords_values.items():
         if v:
