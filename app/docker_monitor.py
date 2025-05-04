@@ -197,14 +197,14 @@ class DockerLogMonitor:
             unmonitored_swarm_services = [s for s in self.selected_swarm_services if s not in monitored_swarm_services]
             message = message + ((f"\n\nThese selected Swarm Services are not being monitored:\n - " + '\n - '.join(unmonitored_swarm_services)) if unmonitored_swarm_services else "")
         
-        message = (f"The Config File was reloaded." if config_reload else f"LoggiFly started.") + "\n" + message
+        title = f"LoggiFly: The config file was reloaded" if config_reload else f"LoggiFly started"
 
-        self.logger.info(message)
+        self.logger.info(title + "\n" + message)
         if ((self.config.settings.disable_start_message is False and config_reload is False)
             or (config_reload is True and self.config.settings.disable_config_reload_message is False)):
             send_notification(self.config, 
                               container_name="LoggiFly", 
-                              title="LoggiFly", 
+                              title=title, 
                               hostname=self.hostname,
                               message=message
                             )   
