@@ -102,19 +102,18 @@ def send_webhook(json_data, url, headers):
 
 def send_notification(config: GlobalConfig, container_name, title, message, keywords=None, hostname=None, file_name=None):
     message = message.replace(r"\n", "\n").strip()
-
     # When multiple hosts are set the hostname is added to the title, when only one host is set the hostname is an empty string
     title = f"[{hostname}] - {title}" if hostname else title
+
     if (config.notifications and config.notifications.ntfy and config.notifications.ntfy.url and config.notifications.ntfy.topic):
-        send_ntfy_notification(config, container_name, message, title, file_name)
+        send_ntfy_notification(config, container_name=container_name, message=message, title=title, file_name=file_name)
+
     if (config.notifications and config.notifications.apprise and config.notifications.apprise.url):
         apprise_url = config.notifications.apprise.url.get_secret_value()
-        send_apprise_notification(apprise_url, container_name, message, title, file_name)
+        send_apprise_notification(apprise_url, container_name=container_name, message=message, title=title, file_name=file_name)
 
     if (config.notifications and config.notifications.webhook and config.notifications.webhook.url):
-
         json_data = {"container": container_name, "keywords": keywords, "title": title, "message": message, "host": hostname}
-
         webhook_url = config.notifications.webhook.url
         webhook_headers = config.notifications.webhook.headers
         send_webhook(json_data, webhook_url, webhook_headers)

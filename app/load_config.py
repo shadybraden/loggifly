@@ -104,6 +104,8 @@ class ContainerConfig(BaseConfigModel, KeywordBase, ActionKeywords):
     attachment_lines: Optional[int] = None
     notification_cooldown: Optional[int] = None
     action_cooldown: Optional[int] = None
+    notification_title: Optional[str] = None
+
 
     @field_validator("ntfy_priority")
     def validate_priority(cls, v):
@@ -174,6 +176,7 @@ class NotificationsConfig(BaseConfigModel):
 class Settings(BaseConfigModel):    
     log_level: str = Field("INFO", description="Logging level (DEBUG, INFO, WARNING, ERROR)")
     notification_cooldown: int = Field(5, description="Cooldown in seconds for repeated alerts")
+    notification_title: str = Field("default", description="Set a template for the notification title")
     action_cooldown: Optional[int] = Field(300)
     attachment_lines: int = Field(20, description="Number of log lines to include in attachments")
     multi_line_entries: bool = Field(True, description="Enable multi-line log detection")
@@ -306,6 +309,7 @@ def load_config(official_path="/config/config.yaml"):
         "attachment_lines": os.getenv("ATTACHMENT_LINES"),
         "multi_line_entries": os.getenv("MULTI_LINE_ENTRIES"),
         "notification_cooldown": os.getenv("NOTIFICATION_COOLDOWN"),
+        "notification_title": os.getenv("NOTIFICATION_TITLE"),
         "reload_config": False if config_path is None else os.getenv("RELOAD_CONFIG"), 
         "disable_start_message": os.getenv("DISABLE_START_MESSAGE"),
         "disable_restart_message": os.getenv("DISABLE_CONFIG_RELOAD_MESSAGE"),

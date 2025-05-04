@@ -100,6 +100,7 @@ class LogProcessor:
         self.config = config
         self.container_keywords = self.config.global_keywords.keywords.copy()
         self.container_keywords_with_attachment = self.config.global_keywords.keywords_with_attachment.copy()
+        self.notification_title = self.config.containers[self.container_name].notification_title or self.config.settings.notification_title
 
         if self.swarm_service:
             self.container_keywords.extend(keyword for keyword in self.config.swarm_services[self.swarm_service].keywords if keyword not in self.container_keywords)
@@ -290,47 +291,47 @@ class LogProcessor:
                     return keyword
         return None
     
+    def _message_from_template(self, keyword, log_line):
+        message = log_line
+
+        if keyword.get("json_template") is not None:
+            template = keyword.get("json_template")
+            try:
+                json_log_entry = json.loads(log_line)
+                json_template_fields = [f for _, f, _, _ in string.Formatter().parse(template) if f]
+                json_log_data = {k: json_log_entry.get(k, "") for k in json_template_fields}
+                message = template.format(**json_log_data)
+                self.logger.debug(f"Successfully applied this template: {template}")
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                self.logger.error(f"Error parsing log line as JSON: {log_line}")
+            except KeyError as e:
+                self.logger.error(f"KeyError: {e} in template: {template} with log line: {log_line}")
+            except Exception as e:
+                self.logger.error(f"Unexpected Error trying to parse a JSON log line with template {template}: {e}")
+                self.logger.error(f"Details: {traceback.format_exc()}") 
+
+        elif keyword.get("template") is not None and "regex" in keyword:
+            template = keyword.get("template")
+            match = re.search(keyword["regex"], log_line, re.IGNORECASE)
+            if match:
+                groups = match.groupdict()
+                groups.setdefault("original_log_line", log_line) 
+                try:
+                    message = template.format(**groups)
+                    self.logger.debug(f"Successfully applied this template: {template}")
+                    return message
+                except KeyError as e:
+                    self.logger.error(f"Key Error for template '{template}': {e}")
+                except Exception as e:
+                    self.logger.error(f"Error applying template {template}: {e}")
+        return message
+    
     def _search_and_send(self, log_line):
         """
         Triggers the search for keywords, keywords with attachment and action_keywords 
         and if found calls the _send_message function to send a notification 
         or the _container_action function to restart/stop the container
         """
-
-        def message_from_template(keyword, log_line):
-            message = log_line
-
-            if keyword.get("json_template") is not None:
-                template = keyword.get("json_template")
-                try:
-                    json_log_entry = json.loads(log_line)
-                    json_template_fields = [f for _, f, _, _ in string.Formatter().parse(template) if f]
-                    json_log_data = {k: json_log_entry.get(k, "") for k in json_template_fields}
-                    message = template.format(**json_log_data)
-
-                except (json.JSONDecodeError, UnicodeDecodeError):
-                    self.logger.error(f"Error parsing log line as JSON: {log_line}")
-                except KeyError as e:
-                    self.logger.error(f"KeyError: {e} in template: {template} with log line: {log_line}")
-                except Exception as e:
-                    self.logger.error(f"Unexpected Error parsing log line as JSON: {e}")
-                    self.logger.error(f"Details: {traceback.format_exc()}") 
-
-            elif keyword.get("template") is not None and "regex" in keyword:
-                template = keyword.get("template")
-                match = re.search(keyword["regex"], log_line, re.IGNORECASE)
-                if match:
-                    groups = match.groupdict()
-                    groups.setdefault("original_log_line", log_line) 
-                    try:
-                        return template.format(**groups)
-                    except KeyError as e:
-                        self.logger.error(f"Key Error for template '{template}': {e}")
-                    except Exception as e:
-                        self.logger.error(f"Error for template {template}: {e}")
-            return message
-
-        keywords_with_attachment_found = [] 
         keywords_found = []
         template = None
         send_attachment = False
@@ -342,7 +343,7 @@ class LogProcessor:
                 keywords_found.append(found)
                 if isinstance(keyword, dict) and (keyword.get("template") is not None or keyword.get("json_template") is not None):
                     self.logger.debug(f"Trying to use template: for '{keyword}'")
-                    message = message_from_template(keyword, log_line)
+                    message = self._message_from_template(keyword, log_line)
 
         # Search for Keywords with attachment
         for keyword in self.container_keywords_with_attachment:
@@ -352,7 +353,7 @@ class LogProcessor:
                 send_attachment = True
                 if isinstance(keyword, dict) and (keyword.get("template") is not None or keyword.get("json_template") is not None):
                     self.logger.debug(f"Trying to use template: for '{keyword}'")
-                    message = message_from_template(keyword, log_line)
+                    message = self._message_from_template(keyword, log_line)
 
         # Trigger notification if keywords have been found
         if keywords_found:        
@@ -362,7 +363,7 @@ class LogProcessor:
                         + f"{formatted_log_entry}"
                         )
             if send_attachment:
-                self._send_message(message, keywords_with_attachment_found, send_attachment=True)
+                self._send_message(message, keywords_found, send_attachment=True)
             else:
                 self._send_message(message, keywords_found, send_attachment=False)
             
@@ -410,29 +411,48 @@ class LogProcessor:
             self.logger.error(f"Could not read logs of Container {self.container_name}: {e}")
             return None
 
-    def _send_message(self, message, keywords, send_attachment=False, action=None):
+    def _send_message(self, message, keywords_found, send_attachment=False, action=None):
         """Adapt the notification title and call the send_notification function from notifier.py"""
-        if isinstance(keywords, list) and len(keywords) == 1:
-            keyword = keywords[0]
-            title = f"'{keyword}' found in {self.container_name}"
-        elif isinstance(keywords, list) and len(keywords) > 2:
-            joined_keywords = ', '.join(f"'{word}'" for word in keywords)
-            title = f"The following keywords were found in {self.container_name}: {joined_keywords}"
-        elif isinstance(keywords, list) and len(keywords) == 2:
-            joined_keywords = ' and '.join(f"'{word}'" for word in keywords)
-            title = f"{joined_keywords} found in {self.container_name}"
-        else:
-            title = f"{self.container_name}"
+        def get_notification_title():
+            if self.notification_title.strip().lower() != "default":
+                try:
+                    keywords = ', '.join(f"'{word}'" for word in keywords_found)
+                    template = self.notification_title.strip()
+                    possible_template_fields = {"keywords": keywords, "container": self.container_name}
+                    template_fields = [f for _, f, _, _ in string.Formatter().parse(template) if f]
+                    configured_template_fields = {k: v for k, v in possible_template_fields.items() if k in template_fields}
+                    title = template.format(**configured_template_fields)
+                    return title
+                except KeyError as e:
+                    self.logger.error(f"Missing key in template: {e}. Template requires keys that weren't provided.")
+                except Exception as e:
+                    self.logger.error(f"Error trying to apply your template for the notification title: {e}")
 
-        if isinstance(keywords, str):
-            keyword = keywords
-        if action:
-            title = f"{'Stopping' if action == 'stop' else 'Restarting'} {self.container_name} because '{keyword}' was found"
-
+            if isinstance(keywords_found, list):
+                if len(keywords_found) == 1:
+                    keyword = keywords_found[0]
+                    title = f"'{keyword}' found in {self.container_name}"
+                elif len(keywords_found) == 2:
+                    joined_keywords = ' and '.join(f"'{word}'" for word in keywords_found)
+                    title = f"{joined_keywords} found in {self.container_name}"
+                elif len(keywords_found) > 2:
+                    joined_keywords = ', '.join(f"'{word}'" for word in keywords_found)
+                    title = f"The following keywords were found in {self.container_name}: {joined_keywords}"
+                else:
+                    title = f"{self.container_name}: {keywords_found}"
+            elif isinstance(keywords_found, str):
+                keyword = keywords_found
+            else: 
+                title = f"{self.container_name}: {keywords_found}"
+            if action:
+                title = f"{'Stopping' if action == 'stop' else 'Restarting'} {self.container_name} because '{keyword}' was found"
+            return title
+    
+        title = get_notification_title()
         if send_attachment:
             file_name = self._log_attachment()
             if file_name and isinstance(file_name, str) and os.path.exists(file_name):
-                send_notification(self.config, self.container_name, keywords=keywords, message=message, title=title, hostname=self.hostname, file_name=file_name)     
+                send_notification(self.config, container_name=self.container_name, keywords=keywords_found, message=message, title=title, hostname=self.hostname, file_name=file_name)     
                 if os.path.exists(file_name):
                     os.remove(file_name)
                     self.logger.debug(f"The file {file_name} was deleted.")
@@ -440,7 +460,7 @@ class LogProcessor:
                     self.logger.debug(f"The file {file_name} does not exist.") 
 
         else:
-            send_notification(self.config, self.container_name, keywords=keywords, message=message, title=title, hostname=self.hostname)
+            send_notification(self.config, container_name=self.container_name, keywords=keywords_found, message=message, title=title, hostname=self.hostname)
 
     def _container_action(self, action):
         try: 
