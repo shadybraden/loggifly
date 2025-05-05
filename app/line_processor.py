@@ -281,7 +281,7 @@ class LogProcessor:
                     match = re.search(regex_keyword, log_line, re.IGNORECASE)
                     if match:
                         self.time_per_keyword[regex_keyword] = time.time()
-                        return f"Regex: {regex_keyword}" if keyword.get("hide_pattern_in_title", "").strip().lower() == "true " else "Regex-Pattern"
+                        return "Regex-Pattern" if keyword.get("hide_pattern_in_title", "").strip().lower() == "true" else f"Regex: {regex_keyword}"
             elif keyword.get("keyword") is not None:
                 keyword = str(keyword["keyword"])
         if isinstance(keyword, str):
