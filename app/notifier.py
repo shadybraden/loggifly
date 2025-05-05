@@ -8,7 +8,28 @@ from load_config import GlobalConfig
 
 logging.getLogger(__name__)
 
-def send_apprise_notification(url, container_name, message, title, file_name=None):
+def get_ntfy_config(config, container_name):
+    ntfy_config = {}
+    ntfy_config["ntfy_url"] = config.notifications.ntfy.url
+    if container_name in [c for c in config.containers]:
+        ntfy_config["ntfy_topic"] = config.containers[container_name].ntfy_topic or config.notifications.ntfy.topic
+        ntfy_config["ntfy_tags"] = config.containers[container_name].ntfy_tags or config.notifications.ntfy.tags
+        ntfy_config["ntfy_priority"] = config.containers[container_name].ntfy_priority or config.notifications.ntfy.priority
+    else:
+        ntfy_config["ntfy_topic"] = config.notifications.ntfy.topic
+        ntfy_config["ntfy_tags"] = config.notifications.ntfy.tags
+        ntfy_config["ntfy_priority"] = config.notifications.ntfy.priority
+
+    if config.notifications.ntfy.token:
+        ntfy_config["authorization"] = f"Bearer {config.notifications.ntfy.token.get_secret_value()}"
+    elif config.notifications.ntfy.username and config.notifications.ntfy.password:
+        credentials = f"{config.notifications.ntfy.username}:{config.notifications.ntfy.password.get_secret_value()}"
+        encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
+        ntfy_config["authorization"] = f"Basic {encoded_credentials}"
+    
+
+
+def send_apprise_notification(url, message, title, file_name=None):
     apobj = apprise.Apprise()
     apobj.add(url)
     message = ("This message had to be shortened: \n" if len(message) > 1900 else "") + message[:1900]
@@ -29,49 +50,38 @@ def send_apprise_notification(url, container_name, message, title, file_name=Non
         logging.error("Error while trying to send apprise-notification: %s", e)
 
 
-def send_ntfy_notification(config, container_name, message, title, file_name=None):
-    ntfy_url = config.notifications.ntfy.url
-    
-    if container_name in [c for c in config.containers]:
-        ntfy_topic = config.containers[container_name].ntfy_topic or config.notifications.ntfy.topic
-        ntfy_tags = config.containers[container_name].ntfy_tags or config.notifications.ntfy.tags
-        ntfy_priority = config.containers[container_name].ntfy_priority or config.notifications.ntfy.priority
-    else:
-        ntfy_topic = config.notifications.ntfy.topic
-        ntfy_tags = config.notifications.ntfy.tags
-        ntfy_priority = config.notifications.ntfy.priority
+def send_ntfy_notification(ntfy_config, message, title, file_name=None):
+
     message = ("This message had to be shortened: \n" if len(message) > 3900 else "") + message[:3900]
     headers = {
         "Title": title,
-        "Tags": f"{ntfy_tags}",
+        "Tags": f"{ntfy_config["ntfy_tags"]}",
         "Icon": "https://raw.githubusercontent.com/clemcer/loggifly/main/images/icon.png",
-            "Priority": f"{ntfy_priority}"
+        "Priority": f"{ntfy_config["ntfy_priority"]}"
         }
-    if config.notifications.ntfy.token:
-        headers["Authorization"] = f"Bearer {config.notifications.ntfy.token.get_secret_value()}"
-    elif config.notifications.ntfy.username and config.notifications.ntfy.password:
-        credentials = f"{config.notifications.ntfy.username}:{config.notifications.ntfy.password.get_secret_value()}"
-        encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
-        headers["Authorization"] = f"Basic {encoded_credentials}"
+    if "Bearer" in ntfy_config.get("Authorization", ""):
+        headers["Authorization"] = f"Bearer {ntfy_config.get('Authorization')}"
+    elif "Basic" in ntfy_config.get("Authorization", ""):
+        headers["Authorization"] = f"Basic {ntfy_config.get('Authorization')}"
     try:
         if file_name:
             headers["Filename"] = file_name
             with open(file_name, "rb") as file:
                 if len(message) < 199:
                     response = requests.post(
-                        f"{ntfy_url}/{ntfy_topic}?message={urllib.parse.quote(message)}",
+                        f"{ntfy_config['ntfy_url']}/{ntfy_config['ntfy_topic']}?message={urllib.parse.quote(message)}",
                         data=file,
                         headers=headers
                     )
                 else:
                     response = requests.post(
-                        f"{ntfy_url}/{ntfy_topic}",
+                        f"{ntfy_config["ntfy_url"]}/{ntfy_config["ntfy_topic"]}",
                         data=file,
                         headers=headers
                     )
         else:
             response = requests.post(
-                f"{ntfy_url}/{ntfy_topic}", 
+                f"{ntfy_config['ntfy_url']}/{ntfy_config['ntfy_topic']}", 
                 data=message,
                 headers=headers
             )
@@ -106,11 +116,12 @@ def send_notification(config: GlobalConfig, container_name, title, message, keyw
     title = f"[{hostname}] - {title}" if hostname else title
 
     if (config.notifications and config.notifications.ntfy and config.notifications.ntfy.url and config.notifications.ntfy.topic):
-        send_ntfy_notification(config, container_name=container_name, message=message, title=title, file_name=file_name)
+        ntfy_config = get_ntfy_config(config, container_name)
+        send_ntfy_notification(ntfy_config, message=message, title=title, file_name=file_name)
 
     if (config.notifications and config.notifications.apprise and config.notifications.apprise.url):
         apprise_url = config.notifications.apprise.url.get_secret_value()
-        send_apprise_notification(apprise_url, container_name=container_name, message=message, title=title, file_name=file_name)
+        send_apprise_notification(apprise_url, message=message, title=title, file_name=file_name)
 
     if (config.notifications and config.notifications.webhook and config.notifications.webhook.url):
         json_data = {"container": container_name, "keywords": keywords, "title": title, "message": message, "host": hostname}
