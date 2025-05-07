@@ -303,7 +303,7 @@ def load_config(official_path="/config/config.yaml"):
     """
     -------------------------LOAD ENVIRONMENT VARIABLES---------------------
     """
-    env_config = { "notifications": {}, "settings": {}, "global_keywords": {}, "containers": {}, "swarm_services": {}}
+    env_config = { "notifications": {}, "settings": {}, "global_keywords": {}, "containers": {}}
     settings_values = {
         "log_level": os.getenv("LOG_LEVEL"),
         "attachment_lines": os.getenv("ATTACHMENT_LINES"),
@@ -344,6 +344,7 @@ def load_config(official_path="/config/config.yaml"):
             env_config["containers"][c] = {}
 
     if os.getenv("SWARM_SERVICES"):
+        env_config["swarm_services"] = {}
         for s in os.getenv("SWARM_SERVICES", "").split(","):
             s = s.strip()
             env_config["swarm_services"][s] = {}

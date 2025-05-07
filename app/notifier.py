@@ -10,15 +10,15 @@ logging.getLogger(__name__)
 
 def get_ntfy_config(config, container_name):
     ntfy_config = {}
-    ntfy_config["ntfy_url"] = config.notifications.ntfy.url
+    ntfy_config["url"] = config.notifications.ntfy.url
     if container_name in [c for c in config.containers]:
-        ntfy_config["ntfy_topic"] = config.containers[container_name].ntfy_topic or config.notifications.ntfy.topic
-        ntfy_config["ntfy_tags"] = config.containers[container_name].ntfy_tags or config.notifications.ntfy.tags
-        ntfy_config["ntfy_priority"] = config.containers[container_name].ntfy_priority or config.notifications.ntfy.priority
+        ntfy_config["topic"] = config.containers[container_name].ntfy_topic or config.notifications.ntfy.topic
+        ntfy_config["tags"] = config.containers[container_name].ntfy_tags or config.notifications.ntfy.tags
+        ntfy_config["priority"] = config.containers[container_name].ntfy_priority or config.notifications.ntfy.priority
     else:
-        ntfy_config["ntfy_topic"] = config.notifications.ntfy.topic
-        ntfy_config["ntfy_tags"] = config.notifications.ntfy.tags
-        ntfy_config["ntfy_priority"] = config.notifications.ntfy.priority
+        ntfy_config["topic"] = config.notifications.ntfy.topic
+        ntfy_config["tags"] = config.notifications.ntfy.tags
+        ntfy_config["priority"] = config.notifications.ntfy.priority
 
     if config.notifications.ntfy.token:
         ntfy_config["authorization"] = f"Bearer {config.notifications.ntfy.token.get_secret_value()}"
@@ -26,7 +26,7 @@ def get_ntfy_config(config, container_name):
         credentials = f"{config.notifications.ntfy.username}:{config.notifications.ntfy.password.get_secret_value()}"
         encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
         ntfy_config["authorization"] = f"Basic {encoded_credentials}"
-    
+    return ntfy_config
 
 
 def send_apprise_notification(url, message, title, file_name=None):
@@ -55,33 +55,33 @@ def send_ntfy_notification(ntfy_config, message, title, file_name=None):
     message = ("This message had to be shortened: \n" if len(message) > 3900 else "") + message[:3900]
     headers = {
         "Title": title,
-        "Tags": f"{ntfy_config["ntfy_tags"]}",
+        "Tags": f"{ntfy_config['tags']}",
         "Icon": "https://raw.githubusercontent.com/clemcer/loggifly/main/images/icon.png",
-        "Priority": f"{ntfy_config["ntfy_priority"]}"
+        "Priority": f"{ntfy_config['priority']}"
         }
-    if "Bearer" in ntfy_config.get("Authorization", ""):
-        headers["Authorization"] = f"Bearer {ntfy_config.get('Authorization')}"
-    elif "Basic" in ntfy_config.get("Authorization", ""):
-        headers["Authorization"] = f"Basic {ntfy_config.get('Authorization')}"
+    if "Bearer" in ntfy_config.get("authorization", ""):
+        headers["Authorization"] = f"Bearer {ntfy_config.get('authorization')}"
+    elif "Basic" in ntfy_config.get("authorization", ""):
+        headers["Authorization"] = f"Basic {ntfy_config.get('authorization')}"
     try:
         if file_name:
             headers["Filename"] = file_name
             with open(file_name, "rb") as file:
                 if len(message) < 199:
                     response = requests.post(
-                        f"{ntfy_config['ntfy_url']}/{ntfy_config['ntfy_topic']}?message={urllib.parse.quote(message)}",
+                        f"{ntfy_config['url']}/{ntfy_config['topic']}?message={urllib.parse.quote(message)}",
                         data=file,
                         headers=headers
                     )
                 else:
                     response = requests.post(
-                        f"{ntfy_config["ntfy_url"]}/{ntfy_config["ntfy_topic"]}",
+                        f"{ntfy_config['url']}/{ntfy_config['topic']}",
                         data=file,
                         headers=headers
                     )
         else:
             response = requests.post(
-                f"{ntfy_config['ntfy_url']}/{ntfy_config['ntfy_topic']}", 
+                f"{ntfy_config['url']}/{ntfy_config['topic']}", 
                 data=message,
                 headers=headers
             )

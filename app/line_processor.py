@@ -342,7 +342,6 @@ class LogProcessor:
             if found:
                 keywords_found.append(found)
                 if isinstance(keyword, dict) and (keyword.get("template") is not None or keyword.get("json_template") is not None):
-                    self.logger.debug(f"Trying to use template: for '{keyword}'")
                     message = self._message_from_template(keyword, log_line)
 
         # Search for Keywords with attachment
@@ -352,7 +351,6 @@ class LogProcessor:
                 keywords_found.append(found)    
                 send_attachment = True
                 if isinstance(keyword, dict) and (keyword.get("template") is not None or keyword.get("json_template") is not None):
-                    self.logger.debug(f"Trying to use template: for '{keyword}'")
                     message = self._message_from_template(keyword, log_line)
 
         # Trigger notification if keywords have been found
