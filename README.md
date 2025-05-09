@@ -49,7 +49,7 @@ Get instant alerts for security breaches, system errors, or custom patterns thro
 - [Remote Hosts](#-remote-hosts)
   - [Labels](#labels)
   - [Remote Hosts Example](#remote-hosts-example)
-  - [Socket Proxy](#-socket-proxy)
+  - [Socket Proxy](#socket-proxy)
 - [Docker Swarm](#docker-swarm-experimental)
 - [Tips](#-tips)
 - [Support / Buy me a coffee](#support)
@@ -87,12 +87,12 @@ Get instant alerts for security breaches, system errors, or custom patterns thro
 ---
 
 >[!TIP]
->For better security use a **[Docker Socket Proxy](#-socket-proxy)**.
-You won't be able to trigger container stops/restarts with a proxy, but if you don't need that, consider taking a look at [this section](#-socket-proxy) before you wrap up the Quick Start install and consider using that compose file instead of the basic one.
+>For better security use a **[Docker Socket Proxy](#socket-proxy)**.
+You won't be able to trigger container stops/restarts with a proxy, but if you don't need that, consider taking a look at [this section](#socket-proxy) before you wrap up the Quick Start install and consider using that compose file instead of the basic one.
 
 # ⚡️ Quick start
 
-In this quickstart only the most essential settings are covered, [here](#Configuration-Deep-Dive) is a more detailed config walkthrough.<br>
+In this quickstart only the most essential settings are covered, [here](#-configuration-deep-dive) is a more detailed config walkthrough.<br>
 
 Choose your preferred setup method - a simple docker compose with environment variables for basic use or a YAML config for advanced control.
 - Environment variables allow for a **simple** and **much quicker** setup
@@ -575,7 +575,7 @@ When the connection to a docker host is lost, LoggiFly will try to reconnect eve
 
 ## Labels
 When multiple hosts are set LoggiFly will use **labels** to differentiate between them both in notifications and in logging.<br>
-You can set a **label** by appending it to the address with `"|"` ([_see example_](#remote-host-example)).<br>
+You can set a **label** by appending it to the address with `"|"` ([_see example_](#remote-hosts-example)).<br>
 When no label is set LoggiFly will use the **hostname** retrieved via the docker daemon. If that fails, usually because `INFO=1` has to be set when using a proxy, the labels will just be `Host-{Nr}`.<br>
 
 If you want to set a label to the mounted docker socket you can do so by adding `unix://var/run/docker.sock|label` in the `DOCKER_HOST` environment variable (_the socket still has to be mounted_) or just set the address of a [socket proxy](#socket-proxy) with a label.
