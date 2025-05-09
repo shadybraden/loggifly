@@ -38,8 +38,8 @@ class DockerLogMonitor:
         self.config = config
         self.swarm_mode = os.getenv("LOGGIFLY_MODE").strip().lower() == "swarm" if os.getenv("LOGGIFLY_MODE") else False
 
-        self.selected_containers = [c for c in self.config.containers]
-        self.selected_swarm_services = [s for s in self.config.swarm_services]
+        self.selected_containers = [c for c in self.config.containers] if self.config.containers else []
+        self.selected_swarm_services = [s for s in self.config.swarm_services] if config.swarm_services else []
         self.shutdown_event = threading.Event()
         self.cleanup_event = threading.Event()
         self.threads = []
@@ -358,8 +358,9 @@ class DockerLogMonitor:
                         if self.shutdown_event.is_set():
                             self.logger.debug("Shutdown event is set. Stopping event handler.")
                             break
-                        container = self.client.containers.get(event["Actor"]["ID"])
+                        container_id = event["Actor"]["ID"]
                         if event.get("Action") == "start":
+                            container = self.client.containers.get(container_id)
                             swarm_label = self._check_if_swarm_to_monitor(container) if self.swarm_mode else None
                             if swarm_label or container.name in self.selected_containers:
                                 self._monitor_container(container, swarm_service=swarm_label)
@@ -368,11 +369,13 @@ class DockerLogMonitor:
                                     send_notification(self.config, "Loggifly", "LoggiFly", f"Monitoring new container: {container.name}", hostname=self.hostname)
                                 self.monitored_containers[container.id] = container
                         elif event.get("Action") == "stop":
-                            if container.id in self.monitored_containers:
-                                self.logger.info(f"The Container {container.name} was stopped")
-                                self.monitored_containers.pop(container.id)
+                            if container_id in self.monitored_containers:
+                                container = self.monitored_containers.get(container_id)
+                                self.logger.info(f"The Container {container.name} was stopped. Stopping Monitoring now.")
+                                self.monitored_containers.pop(container_id)
                                 self._close_stream_connection(container.name)
-
+                            else:
+                                self.logger.debug(f'Docker Event Watcher: {event["Actor"]["Attributes"].get("name", container_id)} was stopped. Ignoring because it is not monitored')
                 except docker.errors.NotFound as e:
                     self.logger.error(f"Docker Event Handler: Container {container} not found: {e}")
                 except Exception as e:  

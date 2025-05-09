@@ -51,7 +51,6 @@ def send_apprise_notification(url, message, title, file_name=None):
 
 
 def send_ntfy_notification(ntfy_config, message, title, file_name=None):
-
     message = ("This message had to be shortened: \n" if len(message) > 3900 else "") + message[:3900]
     headers = {
         "Title": title,
@@ -59,10 +58,9 @@ def send_ntfy_notification(ntfy_config, message, title, file_name=None):
         "Icon": "https://raw.githubusercontent.com/clemcer/loggifly/main/images/icon.png",
         "Priority": f"{ntfy_config['priority']}"
         }
-    if "Bearer" in ntfy_config.get("authorization", ""):
-        headers["Authorization"] = f"Bearer {ntfy_config.get('authorization')}"
-    elif "Basic" in ntfy_config.get("authorization", ""):
-        headers["Authorization"] = f"Basic {ntfy_config.get('authorization')}"
+    if ntfy_config.get('authorization'):
+        headers["Authorization"] = f"{ntfy_config.get('authorization')}"
+
     try:
         if file_name:
             headers["Filename"] = file_name
