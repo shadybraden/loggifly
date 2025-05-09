@@ -374,8 +374,8 @@ class DockerLogMonitor:
                                 self.logger.info(f"The Container {container.name} was stopped. Stopping Monitoring now.")
                                 self.monitored_containers.pop(container_id)
                                 self._close_stream_connection(container.name)
-                            else:
-                                self.logger.debug(f'Docker Event Watcher: {event["Actor"]["Attributes"].get("name", container_id)} was stopped. Ignoring because it is not monitored')
+                            # else:
+                            #     self.logger.debug(f'Docker Event Watcher: {event["Actor"]["Attributes"].get("name", container_id)} was stopped. Ignoring because it is not monitored')
                 except docker.errors.NotFound as e:
                     self.logger.error(f"Docker Event Handler: Container {container} not found: {e}")
                 except Exception as e:  
