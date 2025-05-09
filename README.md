@@ -666,7 +666,8 @@ If you notice any bugs or have suggestions let me know.
 To use LoggiFly in swarm mode you have to set the environment variable `LOGGIFLY_MODE` to `swarm`.<br>
 
 The `config.yaml` is passed to each worker via [Docker Configs](https://docs.docker.com/reference/cli/docker/config/) (_see example_).<br>
-It stays the same except that you set `swarm_services` instead of `containers` or use the `SWARM_SERVICES` environment variable. <br>
+
+The configuration pretty much stays the same except that you set `swarm_services` instead of `containers` or use the `SWARM_SERVICES` environment variable. <br>
 
 If normal `containers` are set instead of or additionally to `swarm_services` LoggiFly will also look for these containers on every node.
 
