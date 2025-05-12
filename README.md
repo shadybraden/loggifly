@@ -578,7 +578,7 @@ When multiple hosts are set LoggiFly will use **labels** to differentiate betwee
 You can set a **label** by appending it to the address with `"|"` ([_see example_](#remote-hosts-example)).<br>
 When no label is set LoggiFly will use the **hostname** retrieved via the docker daemon. If that fails, usually because `INFO=1` has to be set when using a proxy, the labels will just be `Host-{Nr}`.<br>
 
-If you want to set a label to the mounted docker socket you can do so by adding `unix://var/run/docker.sock|label` in the `DOCKER_HOST` environment variable (_the socket still has to be mounted_) or just set the address of a [socket proxy](#socket-proxy) with a label.
+If you want to set a label to the mounted docker socket you can do so by adding `unix:///var/run/docker.sock|label` in the `DOCKER_HOST` environment variable (_the socket still has to be mounted_) or just set the address of a [socket proxy](#socket-proxy) with a label.
 
 ## Remote Hosts Example
 
