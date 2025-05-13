@@ -679,7 +679,7 @@ If normal `containers` are set instead of or additionally to `swarm_services` Lo
 version: "3.8"
 
 services:
-  logmonitor:
+  loggifly:
     image: ghcr.io/clemcer/loggifly:latest
     deploy:
       mode: global  # runs on every node
