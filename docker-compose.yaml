@@ -1,6 +1,6 @@
 version: "3.8"
 services:
-  logsend:
+  loggifly:
     image: ghcr.io/clemcer/loggifly:latest
     container_name: loggifly
     volumes:
