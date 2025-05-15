@@ -4,6 +4,7 @@ import time
 import signal
 import threading
 import logging
+import traceback
 import docker
 from threading import Timer
 from docker.tls import TLSConfig
@@ -22,7 +23,6 @@ logging.basicConfig(
     level="INFO",
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler("monitor.log", mode="w"),
         logging.StreamHandler()
     ]
 )
@@ -151,6 +151,7 @@ def create_docker_clients() -> dict[str, dict[str, Any]]: # {host: {client: Dock
         return None
 
     docker_host = os.environ.get("DOCKER_HOST", "")
+    logging.debug(f"Environment variable DOCKER_HOST: {os.environ.get('DOCKER_HOST', ' - Not configured - ')}")
     tmp_hosts = [h.strip() for h in docker_host.split(",") if h.strip()]
     hosts = []
     for host in tmp_hosts:
@@ -159,11 +160,18 @@ def create_docker_clients() -> dict[str, dict[str, Any]]: # {host: {client: Dock
             host, label = host.split("|", 1)
         hosts.append((host, label.strip()) if label else (host.strip(), None))
 
-    if os.path.exists("/var/run/docker.sock") and not any(h[0] == "unix://var/run/docker.sock" for h in hosts):
-        hosts.append(("unix:///var/run/docker.sock", None)) 
+    if os.path.exists("/var/run/docker.sock"):
+        logging.debug(f"Path to docker socket exists: True")
+        if not any(h[0] == "unix:///var/run/docker.sock" for h in hosts):
+            hosts.append(("unix:///var/run/docker.sock", None)) 
+
+    logging.debug(f"Configured docker hosts to connect to: {[host for (host, _) in hosts]}")
+
+    if len(hosts) == 0:
+        logging.critical("No docker hosts configured. Please set the DOCKER_HOST environment variable or mount your docker socket.")
+
 
     docker_hosts = {}
-
     for host, label in hosts:
         logging.info(f"Trying to connect to docker client on host: {host}")
         parsed = urlparse(host)
@@ -178,13 +186,15 @@ def create_docker_clients() -> dict[str, dict[str, Any]]: # {host: {client: Dock
             docker_hosts[host] = {"client": client, "tls_config": tls_config, "label": label}
         except docker.errors.DockerException as e:
             logging.error(f"Error creating Docker client for {host}: {e}")
+            logging.debug(f"Traceback: {traceback.format_exc()}")
             continue
         except Exception as e:
             logging.error(f"Unexpected error creating Docker client for {host}: {e}")
+            logging.debug(f"Traceback: {traceback.format_exc()}")
             continue
         
     if len(docker_hosts) == 0:
-        logging.critical("Could not connect to any docker hosts. Please check your DOCKER_HOST environment variable.")
+        logging.critical("Could not connect to any docker hosts. Please check your DOCKER_HOST environment variable or mounted docker socket.")
         logging.info("Waiting 10s to prevent restart loop...")
         time.sleep(10)
         sys.exit(1)
