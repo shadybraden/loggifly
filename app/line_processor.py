@@ -100,7 +100,6 @@ class LogProcessor:
         self.config = config
         self.container_keywords = self.config.global_keywords.keywords.copy()
         self.container_keywords_with_attachment = self.config.global_keywords.keywords_with_attachment.copy()
-        self.notification_title = self.config.containers[self.container_name].notification_title or self.config.settings.notification_title
 
         if self.swarm_service:
             self.container_keywords.extend(keyword for keyword in self.config.swarm_services[self.swarm_service].keywords if keyword not in self.container_keywords)
@@ -110,6 +109,7 @@ class LogProcessor:
             self.lines_number_attachment = self.config.swarm_services[self.swarm_service].attachment_lines or self.config.settings.attachment_lines
             self.notification_cooldown = self.config.swarm_services[self.swarm_service].notification_cooldown or self.config.settings.notification_cooldown
             self.action_cooldown = self.config.swarm_services[self.swarm_service].action_cooldown or self.config.settings.action_cooldown or 300
+            self.notification_title = self.config.containers[self.swarm_service].notification_title or self.config.settings.notification_title
         else:
             self.container_keywords.extend(keyword for keyword in self.config.containers[self.container_name].keywords if keyword not in self.container_keywords)
             self.container_keywords_with_attachment.extend(keyword for keyword in self.config.containers[self.container_name].keywords_with_attachment if keyword not in self.container_keywords_with_attachment)
@@ -118,6 +118,7 @@ class LogProcessor:
             self.lines_number_attachment = self.config.containers[self.container_name].attachment_lines or self.config.settings.attachment_lines
             self.notification_cooldown = self.config.containers[self.container_name].notification_cooldown or self.config.settings.notification_cooldown
             self.action_cooldown = self.config.containers[self.container_name].action_cooldown or self.config.settings.action_cooldown or 300
+            self.notification_title = self.config.containers[self.container_name].notification_title or self.config.settings.notification_title
 
         self.multi_line_config = self.config.settings.multi_line_entries
         self.time_per_keyword = {}  
@@ -300,6 +301,7 @@ class LogProcessor:
                 json_log_entry = json.loads(log_line)
                 json_template_fields = [f for _, f, _, _ in string.Formatter().parse(template) if f]
                 json_log_data = {k: json_log_entry.get(k, "") for k in json_template_fields}
+                json_log_data["original_log_line"] = log_line
                 message = template.format(**json_log_data)
                 self.logger.debug(f"Successfully applied this template: {template}")
             except (json.JSONDecodeError, UnicodeDecodeError):
@@ -387,26 +389,29 @@ class LogProcessor:
     def _log_attachment(self):  
         """Tail the last lines of the container logs and save them to a file"""
         base_name = f"last_{self.lines_number_attachment}_lines_from_{self.container_name}.log"
-
+        folder = "/tmp/"
+        
         def find_available_name(filename, number=1):
             """Create different file name with number if it already exists (in case of many notifications at same time)"""
             new_name = f"{filename.rsplit('.', 1)[0]}_{number}.log"
-            if os.path.exists(new_name):
+            path = folder + new_name
+            if os.path.exists(path):
                 return find_available_name(filename, number + 1)
-            return new_name
+            return path
         
         if os.path.exists(base_name):
-            file_name = find_available_name(base_name)
+            file_path = find_available_name(base_name)
         else:
-            file_name = base_name
+            file_path = folder + base_name
         try:
-            file_name = f"last_{self.lines_number_attachment}_lines_from_{self.container_name}.log"
+            os.makedirs("/tmp", exist_ok=True)
             log_tail = self.container.logs(tail=self.lines_number_attachment).decode("utf-8")
-            with open(file_name, "w") as file:  
+            with open(file_path, "w") as file:  
                 file.write(log_tail)
-                return file_name
+                logging.debug(f"Wrote file: {file_path}")
+                return file_path
         except Exception as e:
-            self.logger.error(f"Could not read logs of Container {self.container_name}: {e}")
+            self.logger.error(f"Could not creste log attachment file for Container {self.container_name}: {e}")
             return None
 
     def _send_message(self, message, keywords_found, send_attachment=False, action=None):
@@ -449,14 +454,14 @@ class LogProcessor:
     
         title = get_notification_title()
         if send_attachment:
-            file_name = self._log_attachment()
-            if file_name and isinstance(file_name, str) and os.path.exists(file_name):
-                send_notification(self.config, container_name=self.container_name, keywords=keywords_found, message=message, title=title, hostname=self.hostname, file_name=file_name)     
-                if os.path.exists(file_name):
-                    os.remove(file_name)
-                    self.logger.debug(f"The file {file_name} was deleted.")
+            file_path = self._log_attachment()
+            if file_path and isinstance(file_path, str) and os.path.exists(file_path):
+                send_notification(self.config, container_name=self.container_name, keywords=keywords_found, message=message, title=title, hostname=self.hostname, file_path=file_path)     
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    self.logger.debug(f"The file {file_path} was deleted.")
                 else:
-                    self.logger.debug(f"The file {file_name} does not exist.") 
+                    self.logger.debug(f"The file {file_path} does not exist.") 
 
         else:
             send_notification(self.config, container_name=self.container_name, keywords=keywords_found, message=message, title=title, hostname=self.hostname)

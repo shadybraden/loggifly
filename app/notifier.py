@@ -29,12 +29,12 @@ def get_ntfy_config(config, container_name):
     return ntfy_config
 
 
-def send_apprise_notification(url, message, title, file_name=None):
+def send_apprise_notification(url, message, title, file_path=None):
     apobj = apprise.Apprise()
     apobj.add(url)
     message = ("This message had to be shortened: \n" if len(message) > 1900 else "") + message[:1900]
     try: 
-        if file_name is None:
+        if file_path is None:
             apobj.notify(
                 title=title,
                 body=message,
@@ -43,14 +43,14 @@ def send_apprise_notification(url, message, title, file_name=None):
             apobj.notify(
                 title=title,
                 body=message,
-                attach=file_name
+                attach=file_path
             )
         logging.info("Apprise-Notification sent successfully")
     except Exception as e:
         logging.error("Error while trying to send apprise-notification: %s", e)
 
 
-def send_ntfy_notification(ntfy_config, message, title, file_name=None):
+def send_ntfy_notification(ntfy_config, message, title, file_path=None):
     message = ("This message had to be shortened: \n" if len(message) > 3900 else "") + message[:3900]
     headers = {
         "Title": title,
@@ -62,9 +62,10 @@ def send_ntfy_notification(ntfy_config, message, title, file_name=None):
         headers["Authorization"] = f"{ntfy_config.get('authorization')}"
 
     try:
-        if file_name:
+        if file_path:
+            file_name = file_path.split("/")[-1]
             headers["Filename"] = file_name
-            with open(file_name, "rb") as file:
+            with open(file_path, "rb") as file:
                 if len(message) < 199:
                     response = requests.post(
                         f"{ntfy_config['url']}/{ntfy_config['topic']}?message={urllib.parse.quote(message)}",
@@ -108,18 +109,18 @@ def send_webhook(json_data, url, headers):
         logging.error(f"Error trying to send webhook to url: {url}, headers: {headers}: %s", e)
 
 
-def send_notification(config: GlobalConfig, container_name, title, message, keywords=None, hostname=None, file_name=None):
+def send_notification(config: GlobalConfig, container_name, title, message, keywords=None, hostname=None, file_path=None):
     message = message.replace(r"\n", "\n").strip()
     # When multiple hosts are set the hostname is added to the title, when only one host is set the hostname is an empty string
     title = f"[{hostname}] - {title}" if hostname else title
 
     if (config.notifications and config.notifications.ntfy and config.notifications.ntfy.url and config.notifications.ntfy.topic):
         ntfy_config = get_ntfy_config(config, container_name)
-        send_ntfy_notification(ntfy_config, message=message, title=title, file_name=file_name)
+        send_ntfy_notification(ntfy_config, message=message, title=title, file_path=file_path)
 
     if (config.notifications and config.notifications.apprise and config.notifications.apprise.url):
         apprise_url = config.notifications.apprise.url.get_secret_value()
-        send_apprise_notification(apprise_url, message=message, title=title, file_name=file_name)
+        send_apprise_notification(apprise_url, message=message, title=title, file_path=file_path)
 
     if (config.notifications and config.notifications.webhook and config.notifications.webhook.url):
         json_data = {"container": container_name, "keywords": keywords, "title": title, "message": message, "host": hostname}
