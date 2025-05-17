@@ -100,7 +100,6 @@ class LogProcessor:
         self.config = config
         self.container_keywords = self.config.global_keywords.keywords.copy()
         self.container_keywords_with_attachment = self.config.global_keywords.keywords_with_attachment.copy()
-        self.notification_title = self.config.containers[self.container_name].notification_title or self.config.settings.notification_title
 
         if self.swarm_service:
             self.container_keywords.extend(keyword for keyword in self.config.swarm_services[self.swarm_service].keywords if keyword not in self.container_keywords)
@@ -110,6 +109,7 @@ class LogProcessor:
             self.lines_number_attachment = self.config.swarm_services[self.swarm_service].attachment_lines or self.config.settings.attachment_lines
             self.notification_cooldown = self.config.swarm_services[self.swarm_service].notification_cooldown or self.config.settings.notification_cooldown
             self.action_cooldown = self.config.swarm_services[self.swarm_service].action_cooldown or self.config.settings.action_cooldown or 300
+            self.notification_title = self.config.containers[self.swarm_service].notification_title or self.config.settings.notification_title
         else:
             self.container_keywords.extend(keyword for keyword in self.config.containers[self.container_name].keywords if keyword not in self.container_keywords)
             self.container_keywords_with_attachment.extend(keyword for keyword in self.config.containers[self.container_name].keywords_with_attachment if keyword not in self.container_keywords_with_attachment)
@@ -118,6 +118,7 @@ class LogProcessor:
             self.lines_number_attachment = self.config.containers[self.container_name].attachment_lines or self.config.settings.attachment_lines
             self.notification_cooldown = self.config.containers[self.container_name].notification_cooldown or self.config.settings.notification_cooldown
             self.action_cooldown = self.config.containers[self.container_name].action_cooldown or self.config.settings.action_cooldown or 300
+            self.notification_title = self.config.containers[self.container_name].notification_title or self.config.settings.notification_title
 
         self.multi_line_config = self.config.settings.multi_line_entries
         self.time_per_keyword = {}  
@@ -300,6 +301,7 @@ class LogProcessor:
                 json_log_entry = json.loads(log_line)
                 json_template_fields = [f for _, f, _, _ in string.Formatter().parse(template) if f]
                 json_log_data = {k: json_log_entry.get(k, "") for k in json_template_fields}
+                json_log_data["original_log_line"] = log_line
                 message = template.format(**json_log_data)
                 self.logger.debug(f"Successfully applied this template: {template}")
             except (json.JSONDecodeError, UnicodeDecodeError):
@@ -409,7 +411,7 @@ class LogProcessor:
                 logging.debug(f"Wrote file: {file_path}")
                 return file_path
         except Exception as e:
-            self.logger.error(f"Could write logs of Container {self.container_name} into a file: {e}")
+            self.logger.error(f"Could not creste log attachment file for Container {self.container_name}: {e}")
             return None
 
     def _send_message(self, message, keywords_found, send_attachment=False, action=None):
