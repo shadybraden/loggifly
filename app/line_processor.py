@@ -109,7 +109,7 @@ class LogProcessor:
             self.lines_number_attachment = self.config.swarm_services[self.swarm_service].attachment_lines or self.config.settings.attachment_lines
             self.notification_cooldown = self.config.swarm_services[self.swarm_service].notification_cooldown or self.config.settings.notification_cooldown
             self.action_cooldown = self.config.swarm_services[self.swarm_service].action_cooldown or self.config.settings.action_cooldown or 300
-            self.notification_title = self.config.containers[self.swarm_service].notification_title or self.config.settings.notification_title
+            self.notification_title = self.config.swarm_services[self.swarm_service].notification_title or self.config.settings.notification_title
         else:
             self.container_keywords.extend(keyword for keyword in self.config.containers[self.container_name].keywords if keyword not in self.container_keywords)
             self.container_keywords_with_attachment.extend(keyword for keyword in self.config.containers[self.container_name].keywords_with_attachment if keyword not in self.container_keywords_with_attachment)
