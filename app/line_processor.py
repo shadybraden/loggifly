@@ -96,7 +96,6 @@ class LogProcessor:
     
     def get_keywords(self, keywords):
         returned_keywords = []
-        self.logger.debug(f"Keywords from config for {self.container_name}: {keywords}")
         for item in keywords:
             if isinstance(item, (KeywordItem)):
                 returned_keywords.append((item.keyword, item))
@@ -111,34 +110,20 @@ class LogProcessor:
         This function can get called from the log_monitor function in app.py to reload the config variables
         """
         self.config = config
-        # self.container_keywords = self.config.global_keywords.keywords.copy()
-        # self.container_keywords_with_attachment = self.config.global_keywords.keywords_with_attachment.copy()
-        self.logger.debug(f"CONFIG: {self.config}")
         config_global_keywords = self.config.global_keywords
-        self.logger.debug(f"Global Keywords from config: {config_global_keywords}")
-        self.logger.debug(f"Global keyword keywords: {config_global_keywords.keywords}")
         self.keywords = self.get_keywords(config_global_keywords.keywords)
-
-
 
         if self.swarm_service:
             container_config = self.config.swarm_services[self.swarm_service]
-           # self.container_action_keywords = []
         else:
             container_config = self.config.containers[self.container_name]
-            #self.container_action_keywords = [keyword for keyword in container_config.action_keywords]
         self.keywords.extend(self.get_keywords(container_config.keywords))
-        # keywords = self.get_keywords(container_config.keywords.copy())
-        # self.keywords.extend(keywords)       
-        # self.container_keywords.extend(keyword for keyword in self.config.swarm_services[self.swarm_service].keywords if keyword not in self.container_keywords)
-        # self.container_keywords_with_attachment.extend(keyword for keyword in self.config.swarm_services[self.swarm_service].keywords_with_attachment if keyword not in self.container_keywords_with_attachment)
-        self.logger.debug(f"\n\nFINISHED KEYWORDS FOR {self.container_name}: {self.keywords}\n")
 
         self.number_attachment_lines = container_config.attachment_lines or self.config.settings.attachment_lines
         self.notification_cooldown = container_config.notification_cooldown or self.config.settings.notification_cooldown
         self.action_cooldown = container_config.action_cooldown or self.config.settings.action_cooldown or 300
         self.notification_title = container_config.notification_title or self.config.settings.notification_title
-
+        self.attach_logfile = container_config.attach_logfile if container_config.attach_logfile is not None else self.config.settings.attach_logfile
         self.multi_line_config = self.config.settings.multi_line_entries
         self.time_per_keyword = {}  
         self.last_action_time = None
@@ -165,7 +150,6 @@ class LogProcessor:
             self.log_stream_last_updated = time.time()
             # Start Background-Thread for Timeout (only starts when it is not already running)
             self._start_flush_thread()
-
                 
     def process_line(self, line):
         """        
@@ -228,7 +212,7 @@ class LogProcessor:
             """ 
             self.flush_thread_stopped.clear()
             while True:
-                if self.container_stop_event.is_set(): # self.shutdown_event.is_set() or 
+                if self.container_stop_event.is_set(): 
                     time.sleep(4)
                     if self.container_stop_event.is_set():
                         break
@@ -314,19 +298,15 @@ class LogProcessor:
         or the _container_action function to restart/stop the container
         """
         keywords_found = []
-        send_attachment = False
-        message_config = {"message": log_line}
-        attach_logfile = False
+        message_config = {"message": log_line, "container_name": self.container_name}
         for keyword, item in self.keywords:
             found = self._search_keyword(log_line, keyword, item)
             if found:
                 if isinstance(item, (RegexItem, KeywordItem)):
                     if getattr(item, "template", None) or getattr(item, "json_template", None):
                         message_config["message"] = self.message_from_template(item, log_line)
-                    if item.attach_logfile is True:
-                        attach_logfile = True
                     for (key, value) in item:
-                        if message_config.get(key) is None and value is not None:
+                        if not message_config.get(key) and value is not None:
                             message_config[key] = value
                 keywords_found.append(found)
 
@@ -335,29 +315,27 @@ class LogProcessor:
             message_config["keywords_found"] = keywords_found
             action = message_config.get("action")
             if action is not None:
-                 self._container_action(action)
-
+                success = self._container_action(action)
+                action = (action, success)
             self.logger.debug(f"MESSAGE_CONFIG:\n{json.dumps(message_config, indent=2)}\n")
 
             formatted_log_entry ="\n  -----  LOG-ENTRY  -----\n" + ' | ' + '\n | '.join(log_line.splitlines()) + "\n   -----------------------"
             self.logger.info(f"{'Stopping' if action == 'stop' else 'Restarting'} {self.container_name}" if action else ""
                         + f"The following keywords were found in {self.container_name}: {keywords_found}."
-                        + (f" (A Log FIle will be attached)" if send_attachment else "")
+                        + (f" (A Log FIle will be attached)" if attach_logfile else "")
                         + f"{formatted_log_entry}"
                         )
-            
-            self._send_message(message_config, send_attachment=attach_logfile, action=action)
+            attach_logfile = message_config[attach_logfile] if message_config.get(attach_logfile) is not None else self.attach_logfile
+            self._send_message(message_config, attach_logfile=attach_logfile, action=action)
 
 
-    def _send_message(self, message_config, send_attachment=False, action=None):
+    def _send_message(self, message_config, attach_logfile=False, action=None):
         """Adapt the notification title and call the send_notification function from notifier.py"""
-        title = self.get_notification_title(message_config, action)
-        # if action:
-        #     title = f"{'Stopping' if action == 'stop' else 'Restarting'} {self.container_name}! - " + title
+        title = self.get_notification_title(message_config, self.notification_title, action)
         file_path = None
-        if send_attachment:
+        if attach_logfile:
             number_attachment_lines = message_config["attachment_lines"] if message_config.get("attachment_lines") else self.config.settings.attachment_lines
-            file_path = self._log_attachment(number_attachment_lines)
+            file_path = self._log_attachment(self.logger, self.container, number_attachment_lines)
         send_notification(self.config, 
                         container_name=self.container_name, 
                         title=title, 
@@ -372,113 +350,6 @@ class LogProcessor:
                 self.logger.debug(f"The file {file_path} was deleted.")
             else:
                 self.logger.debug(f"The file {file_path} does not exist.") 
-
-    def get_notification_title(self, message_config, action):
-        keywords_found = message_config.get("keywords_found", "")
-        logging.debug(f"MESSAGE CONFIG: {message_config}\nnotification_title: {message_config.get('notification_title')}")
-        if message_config.get("notification_title"):
-            notification_title = message_config["notification_title"]  
-        else:
-            notification_title = self.notification_title
-        if notification_title.strip().lower() != "default":# and action is None:
-            template = ""
-            try:
-                keywords = ', '.join(f"'{word}'" for word in keywords_found)
-                template = notification_title.strip()
-                possible_template_fields = {"keywords": keywords, "container": self.container_name}
-                template_fields = [f for _, f, _, _ in string.Formatter().parse(template) if f]
-                configured_template_fields = {k: v for k, v in possible_template_fields.items() if k in template_fields}
-                title = template.format(**configured_template_fields)
-                return title
-            except KeyError as e:
-                self.logger.error(f"Missing key in template: {template}. Template requires keys that weren't provided. Error: {e}")
-            except Exception as e:
-                self.logger.error(f"Error trying to apply this template for the notification title: {template} {e}")
-
-        if isinstance(keywords_found, list):
-            if len(keywords_found) == 1:
-                keyword = keywords_found[0]
-                title = f"'{keyword}' found in {self.container_name}"
-            elif len(keywords_found) == 2:
-                joined_keywords = ' and '.join(f"'{word}'" for word in keywords_found)
-                title = f"{joined_keywords} found in {self.container_name}"
-            elif len(keywords_found) > 2:
-                joined_keywords = ', '.join(f"'{word}'" for word in keywords_found)
-                title = f"The following keywords were found in {self.container_name}: {joined_keywords}"
-            else:
-                title = f"{self.container_name}: {keywords_found}"
-        elif isinstance(keywords_found, str) and action:
-            keyword = keywords_found
-            title = f"{'Stopping' if action == 'stop' else 'Restarting'} {self.container_name} because '{keyword}' was found"
-        else: 
-            title = f"{self.container_name}: {keywords_found}"
-            
-        return title
-
-    def message_from_template(self, keyword_item, log_line):
-        message = log_line
-        if not isinstance(keyword_item, (KeywordItem, RegexItem)):
-            return message
-        if keyword_item.json_template is not None:
-            template = keyword_item.json_template
-            try:
-                json_log_entry = json.loads(log_line)
-                json_template_fields = [f for _, f, _, _ in string.Formatter().parse(template) if f]
-                json_log_data = {k: json_log_entry.get(k, "") for k in json_template_fields}
-                json_log_data["original_log_line"] = log_line
-                message = template.format(**json_log_data)
-                self.logger.debug(f"Successfully applied this template: {template}")
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                self.logger.error(f"Error parsing log line as JSON: {log_line}")
-            except KeyError as e:
-                self.logger.error(f"KeyError: {e} in template: {template} with log line: {log_line}")
-            except Exception as e:
-                self.logger.error(f"Unexpected Error trying to parse a JSON log line with template {template}: {e}")
-                self.logger.error(f"Details: {traceback.format_exc()}") 
-
-        elif isinstance(keyword_item, RegexItem) and keyword_item.template is not None:
-            template = keyword_item.template
-            match = re.search(keyword_item.regex, log_line, re.IGNORECASE)
-            if match:
-                groups = match.groupdict()
-                groups.setdefault("original_log_line", log_line) 
-                try:
-                    message = template.format(**groups)
-                    self.logger.debug(f"Successfully applied this template: {template}")
-                    return message
-                except KeyError as e:
-                    self.logger.error(f"Key Error for template '{template}': {e}")
-                except Exception as e:
-                    self.logger.error(f"Error applying template {template}: {e}")
-        return message
-
-    def _log_attachment(self, number_attachment_lines):  
-        """Tail the last lines of the container logs and save them to a file"""
-        base_name = f"last_{number_attachment_lines}_lines_from_{self.container_name}.log"
-        folder = "/tmp/"
-
-        def find_available_name(filename, number=1):
-            """Create different file name with number if it already exists (in case of many notifications at same time)"""
-            new_name = f"{filename.rsplit('.', 1)[0]}_{number}.log"
-            path = folder + new_name
-            if os.path.exists(path):
-                return find_available_name(filename, number + 1)
-            return path
-        
-        if os.path.exists(base_name):
-            file_path = find_available_name(base_name)
-        else:
-            file_path = folder + base_name
-        try:
-            os.makedirs("/tmp", exist_ok=True)
-            log_tail = self.container.logs(tail=number_attachment_lines).decode("utf-8")
-            with open(file_path, "w") as file:  
-                file.write(log_tail)
-                logging.debug(f"Wrote file: {file_path}")
-                return file_path
-        except Exception as e:
-            self.logger.error(f"Could not create log attachment file for Container {self.container_name}: {e}")
-            return None
 
     def _container_action(self, action):
         try: 
@@ -496,4 +367,116 @@ class LogProcessor:
                 self.logger.info(f"Container {self.container_name} has been restarted")
         except Exception as e:
             self.logger.error(f"Failed to {action} {self.container_name}: {e}")
+            return False 
+        return True
 
+def get_notification_title(message_config, notification_title, action):
+    keywords_found = message_config.get("keywords_found", "")
+    logging.debug(f"MESSAGE CONFIG: {message_config}\nnotification_title: {message_config.get('notification_title')}")
+    if message_config.get("notification_title"):
+        notification_title = message_config["notification_title"]  
+    container_name = message_config.get("container_name", "")
+
+    if notification_title.strip().lower() != "default":
+        template = ""
+        try:
+            keywords = ', '.join(f"'{word}'" for word in keywords_found)
+            template = notification_title.strip()
+            possible_template_fields = {"keywords": keywords, "container": container_name}
+            template_fields = [f for _, f, _, _ in string.Formatter().parse(template) if f]
+            configured_template_fields = {k: v for k, v in possible_template_fields.items() if k in template_fields}
+            title = template.format(**configured_template_fields)
+            return title
+        except KeyError as e:
+            logging.error(f"Missing key in template: {template}. Template requires keys that weren't provided. Error: {e}")
+        except Exception as e:
+            logging.error(f"Error trying to apply this template for the notification title: {template} {e}")
+
+    if isinstance(keywords_found, list):
+        if len(keywords_found) == 1:
+            keyword = keywords_found[0]
+            title = f"'{keyword}' found in {container_name}"
+        elif len(keywords_found) == 2:
+            joined_keywords = ' and '.join(f"'{word}'" for word in keywords_found)
+            title = f"{joined_keywords} found in {container_name}"
+        elif len(keywords_found) > 2:
+            joined_keywords = ', '.join(f"'{word}'" for word in keywords_found)
+            title = f"The following keywords were found in {container_name}: {joined_keywords}"
+        else:
+            title = f"{container_name}: {keywords_found}"
+
+    if action:
+        action, success = action
+        if success:
+            title = f"{container_name} was {'stopped' if action == 'stop' else 'restarted'}!" + title
+        else: 
+            title = f"Failed to {'stop' if action == 'stop' else 'restart'} {container_name}!"
+    return title
+
+
+def message_from_template(keyword_item, log_line):
+    message = log_line
+    if not isinstance(keyword_item, (KeywordItem, RegexItem)):
+        return message
+    
+    if keyword_item.json_template is not None: 
+        template = keyword_item.json_template
+        try:
+            json_log_entry = json.loads(log_line)
+            json_template_fields = [f for _, f, _, _ in string.Formatter().parse(template) if f]
+            json_log_data = {k: json_log_entry.get(k, "") for k in json_template_fields}
+            json_log_data["original_log_line"] = log_line
+            message = template.format(**json_log_data)
+            logging.debug(f"Successfully applied this template: {template}")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            logging.error(f"Error parsing log line as JSON: {log_line}")
+        except KeyError as e:
+            logging.error(f"KeyError: {e} in template: {template} with log line: {log_line}")
+        except Exception as e:
+            logging.error(f"Unexpected Error trying to parse a JSON log line with template {template}: {e}")
+            logging.error(f"Details: {traceback.format_exc()}") 
+
+    elif isinstance(keyword_item, RegexItem) and keyword_item.template is not None:
+        template = keyword_item.template
+        match = re.search(keyword_item.regex, log_line, re.IGNORECASE)
+        if match:
+            groups = match.groupdict()
+            groups.setdefault("original_log_line", log_line) 
+            try:
+                message = template.format(**groups)
+                logging.debug(f"Successfully applied this template: {template}")
+                return message
+            except KeyError as e:
+                logging.error(f"Key Error for template '{template}': {e}")
+            except Exception as e:
+                logging.error(f"Error applying template {template}: {e}")
+    return message
+
+def _log_attachment(logger, container, number_attachment_lines):  
+    """Tail the last lines of the container logs and save them to a file"""
+    container_name = container.name
+    base_name = f"last_{number_attachment_lines}_lines_from_{container_name}.log"
+    folder = "/tmp/"
+
+    def find_available_name(filename, number=1):
+        """Create different file name with number if it already exists (in case of many notifications at same time)"""
+        new_name = f"{filename.rsplit('.', 1)[0]}_{number}.log"
+        path = folder + new_name
+        if os.path.exists(path):
+            return find_available_name(filename, number + 1)
+        return path
+    
+    if os.path.exists(base_name):
+        file_path = find_available_name(base_name)
+    else:
+        file_path = folder + base_name
+    try:
+        os.makedirs("/tmp", exist_ok=True)
+        log_tail = container.logs(tail=number_attachment_lines).decode("utf-8")
+        with open(file_path, "w") as file:  
+            file.write(log_tail)
+            logging.debug(f"Wrote file: {file_path}")
+            return file_path
+    except Exception as e:
+        logger.error(f"Could not create log attachment file for Container {container_name}: {e}")
+        return None

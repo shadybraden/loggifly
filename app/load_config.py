@@ -46,16 +46,18 @@ class BaseConfigModel(BaseModel):
 
 class Settings(BaseConfigModel):    
     log_level: str = Field("INFO", description="Logging level (DEBUG, INFO, WARNING, ERROR)")
-    notification_cooldown: int = Field(5, description="Cooldown in seconds for repeated alerts")
-    notification_title: str = Field("default", description="Set a template for the notification title")
-    action_cooldown: Optional[int] = Field(300)
-    attachment_lines: int = Field(20, description="Number of log lines to include in attachments")
     multi_line_entries: bool = Field(True, description="Enable multi-line log detection")
     disable_start_message: bool = Field(False, description="Disable startup notification")
     disable_shutdown_message: bool = Field(False, description="Disable shutdown notification")
     disable_config_reload_message: bool = Field(False, description="Disable config reload notification")
     disable_container_event_message: bool = Field(False, description="Disable notification on container stops/starts")
     reload_config: bool = Field(True, description="Disable config reaload on config change")
+    # modular settings:
+    attach_logfile: bool = Field(False, description="Attach logfile to notification")
+    notification_cooldown: int = Field(5, description="Cooldown in seconds for repeated alerts")
+    notification_title: str = Field("default", description="Set a template for the notification title")
+    action_cooldown: Optional[int] = Field(300)
+    attachment_lines: int = Field(20, description="Number of log lines to include in attachments")
 
 
 class ModularSettings(BaseConfigModel):
@@ -87,7 +89,6 @@ class KeywordItem(ModularSettings):
 
 class KeywordBase(BaseModel):
     keywords: List[Union[str, KeywordItem, RegexItem]] = []
-   # keywords_with_attachment: List[Union[str, KeywordItem, RegexItem]] = []
 
     # for sorting out misconfigured keywords, providing warnings and converting integers to strings (before validation)
     @model_validator(mode="before")
@@ -99,7 +100,7 @@ class KeywordBase(BaseModel):
                     if isinstance(kw, dict):
                         keys = list(kw.keys())
                         if not any(key in keys for key in ["keyword", "regex"]):
-                            logging.warning(f"Ignoring Error in config for {field}: '{kw}'. You have to set 'keyword' or 'regex' as a key.")
+                            logging.warning(f"Ignoring Error in config in field '{field}': '{kw}'. You have to set 'keyword' or 'regex' as a key.")
                             continue
                         for key in keys:
                             if isinstance(kw[key], int):
@@ -109,7 +110,7 @@ class KeywordBase(BaseModel):
                         try:
                             converted.append(str(kw))
                         except ValueError:
-                            logging.warning(f"Ignoring unexpected Error in config for {field}: '{kw}'.")
+                            logging.warning(f"Ignoring unexpected Error in config in field '{field}': '{kw}'.")
                             continue
                 values[field] = converted
         return values
@@ -167,7 +168,7 @@ class GlobalConfig(BaseConfigModel):
     
     @model_validator(mode="after")
     def check_at_least_one(self) -> "GlobalConfig":
-        tmp_list = self.global_keywords.keywords #+ self.global_keywords.keywords_with_attachment
+        tmp_list = self.global_keywords.keywords 
         if not tmp_list:
             for k in self.containers:
                 tmp_list.extend(self.containers[k].keywords)
@@ -202,6 +203,44 @@ def mask_secret_str(data):
         return "**********"  
     else:
         return data
+
+def convert_legacy_formats(config):
+    def _migrate_keywords(legacy, new, new_field):
+        new_key, new_value = new_field
+        for item in legacy:
+            if isinstance(item, (str, int)):
+                new.append({"keyword": str(item), new_key: new_value})
+            elif isinstance(item, dict):
+                item[new_key] = new_value
+                new.append(item)
+    
+    config_copy = copy.deepcopy(config)
+    global_kw = config_copy.get("global_keywords", {})
+    global_with_attachment = global_kw.pop("keywords_with_attachment", None)
+    if global_with_attachment is not None:
+        config_copy["global_keywords"].setdefault("keywords", [])
+        _migrate_keywords(global_with_attachment, config_copy["global_keywords"]["keywords"], ("attach_logfile", True))
+
+    for container in config_copy.get("containers", {}).values():
+        container.setdefault("keywords", [])
+        keywords_with_attachment = container.pop("keywords_with_attachment", None)
+        if keywords_with_attachment is not None:
+            _migrate_keywords(keywords_with_attachment, container["keywords"], ("attach_logfile", True))
+        
+        action_keywords = container.pop("action_keywords", None)
+        if action_keywords is not None:
+            for item in action_keywords:
+                if isinstance(item, dict):
+                    if "restart" in item:
+                        action = "restart"
+                    elif "stop" in item:
+                        action = "stop"
+                    keyword = item[action]
+                    if isinstance(keyword, dict) and "regex" in keyword:
+                        container["keywords"].append({"regex": keyword["regex"], "action": action})
+                    elif isinstance(keyword, str):
+                        container["keywords"].append({"keyword": keyword, "action": action})
+    return config_copy
 
 
 def merge_yaml_and_env(yaml, env_update):
@@ -276,52 +315,6 @@ def load_env_config(config_path=None):
         if value is not None:
             env_config["settings"][key] = value
     return env_config
-
-def convert_legacy_formats(config):
-    def _migrate_keywords():
-        pass
-
-    config_copy = copy.deepcopy(config)
-    global_with_attachment = config_copy.get("global_keywords").get("keywords_with_attachment") 
-    if global_with_attachment is not None:
-        config_copy["global_keywords"].setdefault("keywords", [])
-        for kw in global_with_attachment:
-            if isinstance(kw, (str, int)):
-                config_copy["global_keywords"]["keywords"].append({"keyword": kw, "attach_logfile": True})
-            if isinstance(kw, dict):
-                kw["attach_logfile"] = True
-                config_copy["global_keywords"]["keywords"].append(kw)
-        del config_copy["global_keywords"]["keywords_with_attachment"]
-
-    for container in config_copy.get("containers", {}):
-        container_config = config_copy["containers"][container]
-        container_config.setdefault("keywords", [])
-        keywords_with_attachment = container_config.get("keywords_with_attachment")
-        action_keywords = container_config.get("action_keywords")
-        if keywords_with_attachment is not None:
-            for kw in keywords_with_attachment:
-                if isinstance(kw, (str, int)):
-                    container_config["keywords"].append({"keyword": kw, "attach_logfile": True})
-                if isinstance(kw, dict):
-                    kw["attach_logfile"] = True
-                    container_config["keywords"].append(kw)
-            del container_config["keywords_with_attachment"]
-        if action_keywords is not None:
-            for kw in action_keywords:
-                if isinstance(kw, dict):
-                    if "restart" in kw:
-                        action = "restart"
-                    elif "stop" in kw:
-                        action = "stop"
-                    keyword = kw[action]
-                    if isinstance(keyword, dict) and "regex" in keyword:
-                        container_config["keywords"].append({"regex": keyword["regex"], "action": action})
-                    elif isinstance(keyword, str):
-                        container_config["keywords"].append({"keyword": keyword, "action": action})
-            del container_config["action_keywords"]
-
-    return config_copy
-
 
 
 def load_config(official_path="/config/config.yaml"):

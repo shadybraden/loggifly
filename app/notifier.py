@@ -1,4 +1,5 @@
 import requests
+import apprise
 import base64
 import logging
 import urllib.parse
