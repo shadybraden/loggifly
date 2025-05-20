@@ -2,23 +2,31 @@ import requests
 import base64
 import logging
 import urllib.parse
-import json
-import apprise
 from load_config import GlobalConfig
 
 logging.getLogger(__name__)
 
-def get_ntfy_config(config, container_name):
-    ntfy_config = {}
-    ntfy_config["url"] = config.notifications.ntfy.url
-    if container_name in [c for c in config.containers]:
-        ntfy_config["topic"] = config.containers[container_name].ntfy_topic or config.notifications.ntfy.topic
-        ntfy_config["tags"] = config.containers[container_name].ntfy_tags or config.notifications.ntfy.tags
-        ntfy_config["priority"] = config.containers[container_name].ntfy_priority or config.notifications.ntfy.priority
+def get_ntfy_config(config, container_name, message_config):
+
+    ntfy_config = {"topic": None, "tags": None, "priority": None}
+    
+    global_config = config.notifications.ntfy.model_dump(exclude_none=True)
+    if container_name in config.containers and getattr(config.containers[container_name], "ntfy", None):
+        container_config = config.containers[container_name].ntfy.model_dump(exclude_none=True) 
     else:
-        ntfy_config["topic"] = config.notifications.ntfy.topic
-        ntfy_config["tags"] = config.notifications.ntfy.tags
-        ntfy_config["priority"] = config.notifications.ntfy.priority
+        container_config = {}
+    message_config = message_config if message_config else {}
+
+    for key in ntfy_config.keys():
+        ntfy_key = "ntfy_" + key
+        if message_config.get(ntfy_key) is not None:
+            ntfy_config[key] = message_config.get(ntfy_key)
+        elif container_config.get(ntfy_key) is not None:
+            ntfy_config[key] = container_config.get(ntfy_key)
+        elif global_config.get(key) is not None:
+            ntfy_config[key] = global_config.get(key)
+
+    ntfy_config["url"] = config.notifications.ntfy.url
 
     if config.notifications.ntfy.token:
         ntfy_config["authorization"] = f"Bearer {config.notifications.ntfy.token.get_secret_value()}"
@@ -109,13 +117,13 @@ def send_webhook(json_data, url, headers):
         logging.error(f"Error trying to send webhook to url: {url}, headers: {headers}: %s", e)
 
 
-def send_notification(config: GlobalConfig, container_name, title, message, keywords=None, hostname=None, file_path=None):
+def send_notification(config: GlobalConfig, container_name, title=None, message=None, message_config=None, hostname=None, file_path=None):
     message = message.replace(r"\n", "\n").strip()
     # When multiple hosts are set the hostname is added to the title, when only one host is set the hostname is an empty string
     title = f"[{hostname}] - {title}" if hostname else title
 
     if (config.notifications and config.notifications.ntfy and config.notifications.ntfy.url and config.notifications.ntfy.topic):
-        ntfy_config = get_ntfy_config(config, container_name)
+        ntfy_config = get_ntfy_config(config, container_name, message_config)
         send_ntfy_notification(ntfy_config, message=message, title=title, file_path=file_path)
 
     if (config.notifications and config.notifications.apprise and config.notifications.apprise.url):
@@ -123,7 +131,9 @@ def send_notification(config: GlobalConfig, container_name, title, message, keyw
         send_apprise_notification(apprise_url, message=message, title=title, file_path=file_path)
 
     if (config.notifications and config.notifications.webhook and config.notifications.webhook.url):
+        keywords = message_config.get("keywords_found", None)
         json_data = {"container": container_name, "keywords": keywords, "title": title, "message": message, "host": hostname}
         webhook_url = config.notifications.webhook.url
         webhook_headers = config.notifications.webhook.headers
         send_webhook(json_data, webhook_url, webhook_headers)
+
