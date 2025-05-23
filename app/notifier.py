@@ -7,15 +7,12 @@ from load_config import GlobalConfig
 
 logging.getLogger(__name__)
 
-def get_ntfy_config(config, container_name, message_config):
+def get_ntfy_config(config, container_name, message_config, container_config):
 
     ntfy_config = {"topic": None, "tags": None, "priority": None}
     
     global_config = config.notifications.ntfy.model_dump(exclude_none=True)
-    if container_name in config.containers and getattr(config.containers[container_name], "ntfy", None):
-        container_config = config.containers[container_name].ntfy.model_dump(exclude_none=True) 
-    else:
-        container_config = {}
+    container_config = config.container_config.model_dump(exclude_none=True)
     message_config = message_config if message_config else {}
 
     for key in ntfy_config.keys():
@@ -118,13 +115,13 @@ def send_webhook(json_data, url, headers):
         logging.error(f"Error trying to send webhook to url: {url}, headers: {headers}: %s", e)
 
 
-def send_notification(config: GlobalConfig, container_name, title=None, message=None, message_config=None, hostname=None, file_path=None):
+def send_notification(config: GlobalConfig, container_name, title=None, message=None, message_config=None, container_config=None, hostname=None, file_path=None):
     message = message.replace(r"\n", "\n").strip()
     # When multiple hosts are set the hostname is added to the title, when only one host is set the hostname is an empty string
     title = f"[{hostname}] - {title}" if hostname else title
-
+    file_path = message_config.get("file_path")
     if (config.notifications and config.notifications.ntfy and config.notifications.ntfy.url and config.notifications.ntfy.topic):
-        ntfy_config = get_ntfy_config(config, container_name, message_config)
+        ntfy_config = get_ntfy_config(config, container_name, message_config, container_config)
         send_ntfy_notification(ntfy_config, message=message, title=title, file_path=file_path)
 
     if (config.notifications and config.notifications.apprise and config.notifications.apprise.url):
