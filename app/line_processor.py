@@ -334,7 +334,7 @@ class LogProcessor:
         file_path = None
         if attach_logfile:
             number_attachment_lines = message_config["attachment_lines"] if message_config.get("attachment_lines") else self.config.settings.attachment_lines
-            message_config["file_path"] = log_attachment(self.logger, self.container, number_attachment_lines)
+            message_config["file_path"] = self._log_attachment(number_attachment_lines)
         send_notification(self.config, 
                         container_name=self.container_name, 
                         title=title, 
@@ -349,6 +349,34 @@ class LogProcessor:
                 self.logger.debug(f"The file {file_path} was deleted.")
             else:
                 self.logger.debug(f"The file {file_path} does not exist.") 
+
+    def _log_attachment(self, number_attachment_lines):  
+        """Tail the last lines of the container logs and save them to a file"""
+        base_name = f"last_{number_attachment_lines}_lines_from_{self.container_name}.log"
+        folder = "/tmp/"
+        
+        def find_available_name(filename, number=1):
+            """Create different file name with number if it already exists in case of many notifications at same time (probably unnecessary)"""
+            new_name = f"{filename.rsplit('.', 1)[0]}_{number}.log"
+            path = folder + new_name
+            if os.path.exists(path):
+                return find_available_name(filename, number + 1)
+            return path
+        
+        if os.path.exists(base_name):
+            file_path = find_available_name(base_name)
+        else:
+            file_path = folder + base_name
+        try:
+            os.makedirs("/tmp", exist_ok=True)
+            log_tail = self.container.logs(tail=number_attachment_lines).decode("utf-8")
+            with open(file_path, "w") as file:  
+                file.write(log_tail)
+                logging.debug(f"Wrote file: {file_path}")
+                return file_path
+        except Exception as e:
+            self.logger.error(f"Could not creste log attachment file for Container {self.container_name}: {e}")
+            return None
 
     def _container_action(self, action):
         try: 
@@ -369,9 +397,10 @@ class LogProcessor:
             return False 
         return True
 
+
+
 def get_notification_title(message_config, notification_title, action):
     keywords_found = message_config.get("keywords_found", "")
-    logging.debug(f"MESSAGE CONFIG: {message_config}\nnotification_title: {message_config.get('notification_title')}")
     if message_config.get("notification_title"):
         notification_title = message_config["notification_title"]  
     container_name = message_config.get("container_name", "")
@@ -421,15 +450,15 @@ def message_from_template(keyword_item, log_line):
         template = keyword_item.json_template
         try:
             json_log_entry = json.loads(log_line)
-            json_template_fields = [f for _, f, _, _ in string.Formatter().parse(template) if f]
-            json_log_data = {k: json_log_entry.get(k, "") for k in json_template_fields}
-            json_log_data["original_log_line"] = log_line
-            message = template.format(**json_log_data)
+            json_log_entry["original_log_line"] = log_line  # Add the original log line to the JSON data
+            logging.debug(f"TEMPLATE: {template}")  
+            message = template.format(**json_log_entry)
             logging.debug(f"Successfully applied this template: {template}")
         except (json.JSONDecodeError, UnicodeDecodeError):
             logging.error(f"Error parsing log line as JSON: {log_line}")
         except KeyError as e:
             logging.error(f"KeyError: {e} in template: {template} with log line: {log_line}")
+            logging.debug(f"Traceback: {traceback.format_exc()}")   
         except Exception as e:
             logging.error(f"Unexpected Error trying to parse a JSON log line with template {template}: {e}")
             logging.error(f"Details: {traceback.format_exc()}") 
@@ -450,31 +479,4 @@ def message_from_template(keyword_item, log_line):
                 logging.error(f"Error applying template {template}: {e}")
     return message
 
-def log_attachment(logger, container, number_attachment_lines):  
-    """Tail the last lines of the container logs and save them to a file"""
-    container_name = container.name
-    base_name = f"last_{number_attachment_lines}_lines_from_{container_name}.log"
-    folder = "/tmp/"
 
-    def find_available_name(filename, number=1):
-        """Create different file name with number if it already exists (in case of many notifications at same time)"""
-        new_name = f"{filename.rsplit('.', 1)[0]}_{number}.log"
-        path = folder + new_name
-        if os.path.exists(path):
-            return find_available_name(filename, number + 1)
-        return path
-    
-    if os.path.exists(base_name):
-        file_path = find_available_name(base_name)
-    else:
-        file_path = folder + base_name
-    try:
-        os.makedirs("/tmp", exist_ok=True)
-        log_tail = container.logs(tail=number_attachment_lines).decode("utf-8")
-        with open(file_path, "w") as file:  
-            file.write(log_tail)
-            logging.debug(f"Wrote file: {file_path}")
-            return file_path
-    except Exception as e:
-        logger.error(f"Could not create log attachment file for Container {container_name}: {e}")
-        return None

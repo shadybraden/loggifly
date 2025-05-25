@@ -324,7 +324,7 @@ class DockerLogMonitor:
                         self.logger.error("Error trying to monitor %s: %s", container.name, e)
                         self.logger.debug(traceback.format_exc())
                 finally:
-                    if self.shutdown_event.is_set() or too_many_errors or not_found_error or check_container(container_start_time, error_count):  
+                    if self.shutdown_event.is_set() or too_many_errors or not_found_error or check_container(container_start_time, error_count) is False:  
                         break
                     elif container_stop_event.is_set(): 
                         self._close_stream_connection(container.name)
