@@ -320,8 +320,7 @@ class LogProcessor:
             self.logger.debug(f"MESSAGE_CONFIG:\n{json.dumps(message_config, indent=2)}\n")
             attach_logfile = message_config["attach_logfile"] if message_config.get("attach_logfile") is not None else self.attach_logfile
             formatted_log_entry ="\n  -----  LOG-ENTRY  -----\n" + ' | ' + '\n | '.join(log_line.splitlines()) + "\n   -----------------------"
-            self.logger.info(f"{'Stopping' if action == 'stop' else 'Restarting'} {self.container_name}" if action else ""
-                        + f"The following keywords were found in {self.container_name}: {keywords_found}."
+            self.logger.info(f"The following keywords were found in {self.container_name}: {keywords_found}."
                         + (f" (A Log FIle will be attached)" if attach_logfile else "")
                         + f"{formatted_log_entry}"
                         )

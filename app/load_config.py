@@ -328,7 +328,7 @@ def load_config(official_path="/config/config.yaml"):
     legacy_path = "/app/config.yaml"
     paths = [official_path, legacy_path]
     for path in paths: 
-        logging.info(f"Trying path: {path}")
+        logging.debug(f"Trying path: {path}")
         if os.path.isfile(path):
             try:
                 with open(path, "r") as file:
@@ -342,7 +342,7 @@ def load_config(official_path="/config/config.yaml"):
             except Exception as e:
                 logging.error(f"Unexpected error loading the config.yaml file: {e}")
         else:
-            logging.info(f"The path {path} does not exist.")
+            logging.debug(f"The path {path} does not exist.")
 
     if yaml_config is None:
         logging.warning(f"The config.yaml could not be loaded.")

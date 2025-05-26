@@ -44,7 +44,7 @@ class DockerLogMonitor:
         self.cleanup_event = threading.Event()
         self.threads = []
         self.threads_lock = threading.Lock()
-        self.line_processor_instances = {}
+        self.processor_instances = {}
         self.processors_lock = threading.Lock()
 
         self.stream_connections = {}
@@ -69,8 +69,11 @@ class DockerLogMonitor:
 
     def _add_processor_instance(self, processor, container_stop_event, container_name):
         with self.processors_lock:
-            if container_name not in self.line_processor_instances:
-                self.line_processor_instances[container_name] = {"processor": processor, "container_stop_event": container_stop_event}
+            if container_name not in self.processor_instances:
+                self.processor_instances[container_name] = {"processor": processor, 
+                                                            "container_stop_event": container_stop_event,
+                                                            "generation": 0
+                                                            }
                 return True
             else:
                 return False
@@ -81,7 +84,7 @@ class DockerLogMonitor:
 
     def _close_stream_connection(self, container_name):
         stream = self.stream_connections.get(container_name)
-        container_stop_event = self.line_processor_instances[container_name]["container_stop_event"]
+        container_stop_event = self.processor_instances[container_name]["container_stop_event"]
         container_stop_event.set()
         if stream:
             self.logger.info(f"Closing Log Stream connection for {container_name}")
@@ -164,19 +167,19 @@ class DockerLogMonitor:
             # stop monitoring containers that are no longer in the config
             stop_monitoring = [c for _, c in self.monitored_containers.items() if c.name not in self.selected_containers]
             for c in stop_monitoring:
-                container_stop_event = self.line_processor_instances[c.name]["container_stop_event"]
+                container_stop_event = self.processor_instances[c.name]["container_stop_event"]
                 self._close_stream_connection(c.name)
                 self.monitored_containers.pop(c.id)
             # reload config variables in the line processor instances to update keywords and other settings
-            for container in self.line_processor_instances.keys():
-                processor = self.line_processor_instances[container]["processor"]
+            for container in self.processor_instances.keys():
+                processor = self.processor_instances[container]["processor"]
                 processor.load_config_variables(self.config)
             # start monitoring new containers that are in the config but not monitored yet
             containers_to_monitor = [c for c in self.client.containers.list() if c.name in self.selected_containers and c.id not in self.monitored_containers.keys()]
             for c in containers_to_monitor:
                 self.logger.info(f"New Container to monitor: {c.name}")
-                if self.line_processor_instances.get(c.name) is not None:
-                    container_stop_event = self.line_processor_instances[c.name]["container_stop_event"]
+                if self.processor_instances.get(c.name) is not None:
+                    container_stop_event = self.processor_instances[c.name]["container_stop_event"]
                     container_stop_event.clear()
                 self._monitor_container(c)
                 self.monitored_containers[c.id] = c
@@ -256,7 +259,7 @@ class DockerLogMonitor:
                     self.logger.debug(f"Container {container.name} is not running. Stopping monitoring.")
                     return False
                 if container.attrs['State']['StartedAt'] != container_start_time:
-                    self.logger.debug(f"Container {container.name} was restarted. Stopping monitoring.")
+                    self.logger.debug(f"Container {container.name}: Stopping monitoring for old thread.")
                     return False
             except docker.errors.NotFound:
                 self.logger.error(f"Container {container.name} not found during container check. Stopping monitoring.")
@@ -282,16 +285,23 @@ class DockerLogMonitor:
             too_many_errors = False
 
             # re-use old line processor instance if it exists, otherwise create a new one
-            if container.name in self.line_processor_instances:
+            if container.name in self.processor_instances:
                 self.logger.debug(f"{container.name}: Re-Using old line processor")    
-                processor, container_stop_event = self.line_processor_instances[container.name]["processor"], self.line_processor_instances[container.name]["container_stop_event"]
+                with self.processors_lock:
+                    self.processor_instances[container.name]["generation"] += 1
+                    gen = self.processor_instances[container.name]["generation"]
+                    processor = self.processor_instances[container.name]["processor"]
+                    container_stop_event = self.processor_instances[container.name]["container_stop_event"]
+                self._close_stream_connection(container.name)  # close old stream connection if it exists
+                container_stop_event.clear()
                 processor._start_flush_thread()
             else:
                 container_stop_event = threading.Event()
                 processor = LogProcessor(self.logger, self.hostname, self.config, container, container_stop_event, swarm_service=swarm_service)
                 self._add_processor_instance(processor, container_stop_event, container.name)
+                gen = 0
+                container_stop_event.clear()
 
-            container_stop_event.clear()
             while not self.shutdown_event.is_set() and not container_stop_event.is_set():
                 buffer = b""
                 try:
@@ -324,16 +334,17 @@ class DockerLogMonitor:
                         self.logger.error("Error trying to monitor %s: %s", container.name, e)
                         self.logger.debug(traceback.format_exc())
                 finally:
-                    if self.shutdown_event.is_set() or too_many_errors or not_found_error or check_container(container_start_time, error_count) is False:  
+                    if self.shutdown_event.is_set():
                         break
-                    elif container_stop_event.is_set(): 
+                    if gen != self.processor_instances[container.name]["generation"]: # if there is a new thread running for this container this thread stops
+                        break
+                    elif too_many_errors or not_found_error or check_container(container_start_time, error_count) is False or container_stop_event.is_set(): 
                         self._close_stream_connection(container.name)
                         break
                     else:
                         self.logger.info(f"{container.name}: Log Stream stopped. Reconnecting... {'error count: ' + str(error_count) if error_count > 0 else ''}")
             self.logger.info(f"{container.name}: Monitoring stopped for container.")
-            container_stop_event.set()
-
+            
         thread = threading.Thread(target=log_monitor, daemon=True)
         self._add_thread(thread)
         thread.start()
