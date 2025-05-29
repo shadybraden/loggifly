@@ -64,6 +64,11 @@ class ModularSettings(BaseConfigModel):
     ntfy_tags: Optional[str] = None
     ntfy_topic: Optional[str] = None
     ntfy_priority: Optional[int] = None
+    ntfy_url: Optional[str] = None
+    ntfy_token: Optional[SecretStr] = None
+    ntfy_username: Optional[str] = None
+    ntfy_password: Optional[SecretStr] = None
+    apprise_url: Optional[SecretStr] = None
     attachment_lines: Optional[int] = None
     notification_cooldown: Optional[int] = None
     notification_title: Optional[str] = None

@@ -9,6 +9,7 @@ import traceback
 import threading
 from threading import Thread, Lock
 from notifier import send_notification
+from pydantic import SecretStr
 from load_config import GlobalConfig, KeywordItem, RegexItem
 
 class LogProcessor:
@@ -307,9 +308,9 @@ class LogProcessor:
                         message_config["message"] = message_from_template(item, log_line)
                     for (key, value) in item:
                         if not message_config.get(key) and value is not None:
-                            message_config[key] = value
+                            message_config[key] = value if not isinstance(value, SecretStr) else value.get_secret_value()
                 keywords_found.append(found)
-
+        
         # Trigger notification if keywords have been found
         if keywords_found:   
             message_config["keywords_found"] = keywords_found
