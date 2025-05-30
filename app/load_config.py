@@ -124,9 +124,10 @@ class KeywordBase(BaseModel):
         return values
     
 class ContainerConfig(KeywordBase, ModularSettings):    
-    pass 
+    hostname: Optional[str] = Field(default=None, description="The host in which the container should be monitored") 
 
     _validate_priority = field_validator("ntfy_priority", mode="before")(validate_priority)
+
 class GlobalKeywords(BaseConfigModel, KeywordBase):
     pass
 

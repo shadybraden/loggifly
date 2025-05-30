@@ -38,8 +38,7 @@ class DockerLogMonitor:
         self.config = config
         self.swarm_mode = os.getenv("LOGGIFLY_MODE").strip().lower() == "swarm" if os.getenv("LOGGIFLY_MODE") else False
 
-        self.selected_containers = [c for c in self.config.containers] if self.config.containers else []
-        self.selected_swarm_services = [s for s in self.config.swarm_services] if config.swarm_services else []
+
         self.shutdown_event = threading.Event()
         self.cleanup_event = threading.Event()
         self.threads = []
@@ -96,6 +95,24 @@ class DockerLogMonitor:
         else:
             self.logger.debug(f"Could not find log stream connection for container {container_name}")
 
+    def _get_selected_containers(self):
+        self.selected_containers = [] #  [c for c in self.config.containers] if self.config.containers else []
+        if self.config.containers:
+            for container in self.config.containers:
+                container_object = self.config.containers[container]
+                if self.hostname and container_object.hostname is not None and container_object.hostname.strip() != self.hostname:
+                    self.logger.debug(f"Container {container} is configured for host '{container_object.hostname}' but this instance is running on host '{self.hostname}'. Skipping this container.")
+                else:
+                    self.selected_containers.append(container)
+
+        self.selected_swarm_services = []   # [s for s in self.config.swarm_services] if config.swarm_services else []
+        if self.config.swarm_services and self.swarm_mode:
+            for swarm in self.config.swarm_services:
+                swarm_object = self.config.swarm_services[swarm]
+                if self.hostname and swarm_object.hostname is not None and swarm_object.hostname.strip() != self.hostname:
+                    self.logger.debug(f"Swarm service {container} is configured for host '{swarm_object.hostname}' but this instance is running on host '{self.hostname}'. Skipping this swarm service.")
+                else:
+                    self.selected_swarm_services.append(swarm)
 
     def _check_if_swarm_to_monitor(self, container):
         labels = container.labels
@@ -131,6 +148,9 @@ class DockerLogMonitor:
         if self.swarm_mode:
             self.logger.info(f"Running in swarm mode.")
 
+        self._get_selected_containers()
+
+
         for container in self.client.containers.list():
             if self.swarm_mode:
                 # if the container belongs to a swarm service that is set in the config the service name has to be saved for later use 
@@ -159,7 +179,7 @@ class DockerLogMonitor:
             return
         self.config = config if config is not None else self.config
         self.logger.setLevel(getattr(logging, self.config.settings.log_level.upper(), logging.INFO))
-        self.selected_containers = [c for c in self.config.containers]
+        self._get_selected_containers()
         if self.shutdown_event.is_set():
             self.logger.debug("Shutdown event is set. Not applying config changes.")
             return
@@ -174,6 +194,7 @@ class DockerLogMonitor:
             for container in self.processor_instances.keys():
                 processor = self.processor_instances[container]["processor"]
                 processor.load_config_variables(self.config)
+
             # start monitoring new containers that are in the config but not monitored yet
             containers_to_monitor = [c for c in self.client.containers.list() if c.name in self.selected_containers and c.id not in self.monitored_containers.keys()]
             for c in containers_to_monitor:
