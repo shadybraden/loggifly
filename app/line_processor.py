@@ -410,10 +410,8 @@ def get_notification_title(message_config, notification_title, action):
         try:
             keywords = ', '.join(f"'{word}'" for word in keywords_found)
             template = notification_title.strip()
-            possible_template_fields = {"keywords": keywords, "container": container_name}
-            template_fields = [f for _, f, _, _ in string.Formatter().parse(template) if f]
-            configured_template_fields = {k: v for k, v in possible_template_fields.items() if k in template_fields}
-            title = template.format(**configured_template_fields)
+            template_fields = {"container": container_name, "keywords": keywords}
+            title = template.format(**template_fields)
         except KeyError as e:
             logging.error(f"Missing key in template: {template}. Template requires keys that weren't provided. Error: {e}")
         except Exception as e:

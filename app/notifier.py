@@ -64,6 +64,25 @@ def get_apprise_url(config, message_config, container_config):
     logging.debug(f"Apprise-URL: {apprise_url}")
     return apprise_url
 
+def get_webhook_config(config, message_config, container_config):
+    webhook_config = {"url": None, "headers": {}}
+    
+    global_config = config.notifications.webhook.model_dump(exclude_none=True) if config.notifications.webhook else {}
+    container_config = container_config.model_dump(exclude_none=True) if container_config else {}
+    message_config = message_config if message_config else {}
+
+    for key in webhook_config.keys():
+        webhook_key = "webhook_" + key
+        if message_config.get(webhook_key) is not None:
+            webhook_config[key] = message_config.get(webhook_key)
+        elif container_config.get(webhook_key) is not None:
+            webhook_config[key] = container_config.get(webhook_key)
+        elif global_config.get(key) is not None:
+            webhook_config[key] = global_config.get(key)
+    
+    logging.debug(f"Webhook-Config: {webhook_config}")
+    return webhook_config
+
 
 def send_apprise_notification(url, message, title, file_path=None):
     apobj = apprise.Apprise()
@@ -128,7 +147,8 @@ def send_ntfy_notification(ntfy_config, message, title, file_path=None):
         logging.error("Error while trying to connect to ntfy: %s", e)
 
 
-def send_webhook(json_data, url, headers):
+def send_webhook(json_data, webhook_config):
+    url, headers = webhook_config.get("url"), webhook_config.get("headers", {})
     try: 
         response = requests.post(
             url=url,
@@ -150,21 +170,18 @@ def send_notification(config: GlobalConfig, container_name, title=None, message=
     # When multiple hosts are set the hostname is added to the title, when only one host is set the hostname is an empty string
     title = f"[{hostname}] - {title}" if hostname else title
     file_path = message_config.get("file_path") if message_config else None
-    # if (config.notifications and config.notifications.ntfy and config.notifications.ntfy.url and config.notifications.ntfy.topic):
 
     ntfy_config = get_ntfy_config(config, message_config, container_config)
     if (ntfy_config and ntfy_config.get("url") and ntfy_config.get("topic")):
         send_ntfy_notification(ntfy_config, message=message, title=title, file_path=file_path)
 
-    # if (config.notifications and config.notifications.apprise and config.notifications.apprise.url):
     apprise_url = get_apprise_url(config, message_config, container_config)
     if apprise_url:
         send_apprise_notification(apprise_url, message=message, title=title, file_path=file_path)
 
-    if (config.notifications and config.notifications.webhook and config.notifications.webhook.url):
+    webhook_config = get_webhook_config(config, message_config, container_config)
+    if (webhook_config and webhook_config.get("url")):
         keywords = message_config.get("keywords_found", None)
         json_data = {"container": container_name, "keywords": keywords, "title": title, "message": message, "host": hostname}
-        webhook_url = config.notifications.webhook.url
-        webhook_headers = config.notifications.webhook.headers
-        send_webhook(json_data, webhook_url, webhook_headers)
+        send_webhook(json_data, webhook_config)
 

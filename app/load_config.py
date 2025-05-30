@@ -69,6 +69,9 @@ class ModularSettings(BaseConfigModel):
     ntfy_username: Optional[str] = None
     ntfy_password: Optional[SecretStr] = None
     apprise_url: Optional[SecretStr] = None
+    webhook_url: Optional[str] = None
+    webhook_headers: Optional[dict] = None
+
     attachment_lines: Optional[int] = None
     notification_cooldown: Optional[int] = None
     notification_title: Optional[str] = None
