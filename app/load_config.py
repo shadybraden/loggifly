@@ -124,7 +124,7 @@ class KeywordBase(BaseModel):
         return values
     
 class ContainerConfig(KeywordBase, ModularSettings):    
-    hostname: Optional[str] = Field(default=None, description="The host in which the container should be monitored") 
+    hosts: Optional[str] = Field(default=None, description="The host in which the container should be monitored") 
 
     _validate_priority = field_validator("ntfy_priority", mode="before")(validate_priority)
 
@@ -198,16 +198,16 @@ def format_pydantic_error(e: ValidationError) -> str:
     return "\n".join(error_messages)
 
 
-def mask_secret_str(data):
+def prettify_config(data):
     if isinstance(data, dict):
         priority_keys = [k for k in ("regex", "keyword") if k in data]
         if priority_keys:
             rest_keys = [k for k in data.keys() if k not in priority_keys]
             ordered_dict = {k: data[k] for k in priority_keys + rest_keys}
-            return {k: mask_secret_str(v) for k, v in ordered_dict.items()}
-        return {k: mask_secret_str(v) for k, v in data.items()}
+            return {k: prettify_config(v) for k, v in ordered_dict.items()}
+        return {k: prettify_config(v) for k, v in data.items()}
     elif isinstance(data, list):
-        return [mask_secret_str(item) for item in data]
+        return [prettify_config(item) for item in data]
     elif isinstance(data, SecretStr):
         return "**********"  
     else:
@@ -371,7 +371,7 @@ def load_config(official_path="/config/config.yaml"):
     # Validate the merged configuration with Pydantic
     config = GlobalConfig.model_validate(merged_config)
 
-    config_dict = mask_secret_str(config.model_dump(exclude_none=True, exclude_defaults=False, exclude_unset=False))
+    config_dict = prettify_config(config.model_dump(exclude_none=True, exclude_defaults=False, exclude_unset=False))
     yaml_output = yaml.dump(config_dict, default_flow_style=False, sort_keys=False, indent=4)
     logging.info(f"\n ------------- CONFIG ------------- \n{yaml_output}\n ----------------------------------")
 

@@ -36,8 +36,7 @@ class DockerLogMonitor:
         self.hostname = hostname  # empty string if only one client is being monitored, otherwise the hostname of the client do differentiate between the hosts
         self.host = host
         self.config = config
-        self.swarm_mode = os.getenv("LOGGIFLY_MODE").strip().lower() == "swarm" if os.getenv("LOGGIFLY_MODE") else False
-
+        self.swarm_mode = os.getenv("LOGGIFLY_MODE", "").strip().lower() == "swarm"
 
         self.shutdown_event = threading.Event()
         self.cleanup_event = threading.Event()
@@ -100,19 +99,24 @@ class DockerLogMonitor:
         if self.config.containers:
             for container in self.config.containers:
                 container_object = self.config.containers[container]
-                if self.hostname and container_object.hostname is not None and container_object.hostname.strip() != self.hostname:
-                    self.logger.debug(f"Container {container} is configured for host '{container_object.hostname}' but this instance is running on host '{self.hostname}'. Skipping this container.")
-                else:
-                    self.selected_containers.append(container)
+                if self.hostname and container_object.hosts is not None:
+                    hostnames = container_object.hosts.split(",")
+                    if all(hn.strip() != self.hostname for hn in hostnames):
+                        # if the container is configured for a different host than this instance is running on, skip it
+                        self.logger.debug(f"Container {container} is configured for host(s) '{', '.join(hostnames)}' but this instance is running on host '{self.hostname}'. Skipping this container.")
+                        continue
+                self.selected_containers.append(container)
 
         self.selected_swarm_services = []   # [s for s in self.config.swarm_services] if config.swarm_services else []
         if self.config.swarm_services and self.swarm_mode:
             for swarm in self.config.swarm_services:
                 swarm_object = self.config.swarm_services[swarm]
-                if self.hostname and swarm_object.hostname is not None and swarm_object.hostname.strip() != self.hostname:
-                    self.logger.debug(f"Swarm service {container} is configured for host '{swarm_object.hostname}' but this instance is running on host '{self.hostname}'. Skipping this swarm service.")
-                else:
-                    self.selected_swarm_services.append(swarm)
+                if self.hostname and swarm_object.hosts is not None:
+                    hostnames = swarm_object.hosts.split(",")
+                    if all(hn.strip() != self.hostname for hn in hostnames):
+                        self.logger.debug(f"Swarm service {container} is configured for host(s) '{', '.join(hostnames)}' but this instance is running on host '{self.hostname}'. Skipping this swarm service.")
+                        continue
+                self.selected_swarm_services.append(swarm)
 
     def _check_if_swarm_to_monitor(self, container):
         labels = container.labels
@@ -141,7 +145,7 @@ class DockerLogMonitor:
                 except Exception as e:
                     manager = False
                 try:
-                    self.hostname = ("manager" if manager else "Worker") + "@" + self.client.info()["Name"]
+                    self.hostname = ("manager" if manager else "worker") + "@" + self.client.info()["Name"]
                 except Exception as e:
                     self.hostname = ("manager" if manager else "worker") + "@" + socket.gethostname()
         self.init_logging()
@@ -310,7 +314,6 @@ class DockerLogMonitor:
                 self.logger.debug(f"{container.name}: Re-Using old line processor")    
                 with self.processors_lock:
                     self.processor_instances[container.name]["generation"] += 1
-                    gen = self.processor_instances[container.name]["generation"]
                     processor = self.processor_instances[container.name]["processor"]
                     container_stop_event = self.processor_instances[container.name]["container_stop_event"]
                 self._close_stream_connection(container.name)  # close old stream connection if it exists
@@ -320,9 +323,8 @@ class DockerLogMonitor:
                 container_stop_event = threading.Event()
                 processor = LogProcessor(self.logger, self.hostname, self.config, container, container_stop_event, swarm_service=swarm_service)
                 self._add_processor_instance(processor, container_stop_event, container.name)
-                gen = 0
                 container_stop_event.clear()
-
+            gen = self.processor_instances[container.name]["generation"]
             while not self.shutdown_event.is_set() and not container_stop_event.is_set():
                 buffer = b""
                 try:

@@ -308,7 +308,7 @@ class LogProcessor:
                         message_config["message"] = message_from_template(item, log_line)
                     for (key, value) in item:
                         if not message_config.get(key) and value is not None:
-                            message_config[key] = value if not isinstance(value, SecretStr) else value.get_secret_value()
+                            message_config[key] = value
                 keywords_found.append(found)
         
         # Trigger notification if keywords have been found
@@ -318,7 +318,7 @@ class LogProcessor:
             if action is not None:
                 success = self._container_action(action)
                 action = (action, success)
-            self.logger.debug(f"MESSAGE_CONFIG:\n{json.dumps(message_config, indent=2)}\n")
+            self.logger.debug(f"MESSAGE_CONFIG:\n{(message_config)}\n")
             attach_logfile = message_config["attach_logfile"] if message_config.get("attach_logfile") is not None else self.attach_logfile
             formatted_log_entry ="\n  -----  LOG-ENTRY  -----\n" + ' | ' + '\n | '.join(log_line.splitlines()) + "\n   -----------------------"
             self.logger.info(f"The following keywords were found in {self.container_name}: {keywords_found}."
@@ -435,7 +435,7 @@ def get_notification_title(message_config, notification_title, action):
         if success:
             title = f"{container_name} was {'stopped' if action == 'stop' else 'restarted'}! - " + title
         else: 
-            title = f"Failed to {'stop' if action == 'stop' else 'restart'} {container_name}!"
+            title = f"Failed to {'stop' if action == 'stop' else 'restart'} {container_name}!" + title
     return title
 
 
