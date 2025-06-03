@@ -59,6 +59,10 @@ class Settings(BaseConfigModel):
     action_cooldown: Optional[int] = Field(300)
     attachment_lines: int = Field(20, description="Number of log lines to include in attachments")
 
+class ExcludedKeywords(BaseConfigModel):
+    keyword: Optional[str] = None
+    regex: Optional[str] = None
+
 
 class ModularSettings(BaseConfigModel):
     ntfy_tags: Optional[str] = None
@@ -77,10 +81,13 @@ class ModularSettings(BaseConfigModel):
     notification_title: Optional[str] = None
     action_cooldown: Optional[int] = None
     attach_logfile: Optional[bool] = None
+    excluded_keywords: Optional[List[Union[str, ExcludedKeywords]]] = Field(default=None, description="List of keywords to exclude from notifications")
 
 class ActionEnum(str, Enum):
     RESTART = "restart"
     STOP = "stop"
+
+
 
 class RegexItem(ModularSettings):
     regex: str
@@ -93,7 +100,7 @@ class KeywordItem(ModularSettings):
     keyword: str
     json_template: Optional[str] = None
     action: Optional[ActionEnum] = None
-
+    
 
 class KeywordBase(BaseModel):
     keywords: List[Union[str, KeywordItem, RegexItem]] = []
@@ -179,8 +186,10 @@ class GlobalConfig(BaseConfigModel):
     def check_at_least_one(self) -> "GlobalConfig":
         tmp_list = self.global_keywords.keywords 
         if not tmp_list:
-            for k in self.containers:
-                tmp_list.extend(self.containers[k].keywords)
+            for c in self.containers:
+                tmp_list.extend(self.containers[c].keywords)
+            for c in self.swarm_services:
+                tmp_list.extend(self.swarm_services[c].keywords)
         if not tmp_list:
             raise ValueError("No keywords configured. You have to set keywords either per container or globally.")
         if not self.containers and not self.swarm_services:
