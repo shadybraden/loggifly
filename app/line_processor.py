@@ -299,6 +299,7 @@ class LogProcessor:
         or the _container_action function to restart/stop the container
         """
         keywords_found = []
+        excluded_keywords = self.container_config.excluded_keywords if self.container_config.excluded_keywords else []
         message_config = {"message": log_line, "container_name": self.container_name}
         for keyword, item in self.keywords:
             found = self._search_keyword(log_line, keyword, item)
@@ -306,6 +307,8 @@ class LogProcessor:
                 if isinstance(item, (RegexItem, KeywordItem)):
                     if getattr(item, "template", None) or getattr(item, "json_template", None):
                         message_config["message"] = message_from_template(item, log_line)
+                    if item.excluded_keywords:
+                        excluded_keywords.extend(item.excluded_keywords)
                     for (key, value) in item:
                         if not message_config.get(key) and value is not None:
                             message_config[key] = value
@@ -313,11 +316,20 @@ class LogProcessor:
         
         # Trigger notification if keywords have been found
         if keywords_found:   
+            if excluded_keywords:
+                for keyword in excluded_keywords:
+                    found = self._search_keyword(log_line, keyword, None, ignore_keyword_time=True)
+                    if found:
+                        self.logger.debug(f"Keyword found in '{self.container_name} but IGNORED because: excluded keyword/regex '{found} was found")
+                        return 
+                    
             message_config["keywords_found"] = keywords_found
             action = message_config.get("action")
             if action is not None:
-                success = self._container_action(action)
-                action = (action, success)
+                if self.last_action_time is None or (self.last_action_time is not None and time.time() - self.last_action_time >= max(int(self.action_cooldown), 60)):
+                    success = self._container_action(action)
+                    action = (action, success)
+                    self.last_action_time = time.time()
             self.logger.debug(f"MESSAGE_CONFIG:\n{(message_config)}\n")
             attach_logfile = message_config["attach_logfile"] if message_config.get("attach_logfile") is not None else self.attach_logfile
             formatted_log_entry ="\n  -----  LOG-ENTRY  -----\n" + ' | ' + '\n | '.join(log_line.splitlines()) + "\n   -----------------------"
@@ -400,6 +412,7 @@ class LogProcessor:
 
 
 def get_notification_title(message_config, notification_title, action):
+    title = None
     keywords_found = message_config.get("keywords_found", "")
     if message_config.get("notification_title"):
         notification_title = message_config["notification_title"]  
@@ -413,11 +426,11 @@ def get_notification_title(message_config, notification_title, action):
             template_fields = {"container": container_name, "keywords": keywords}
             title = template.format(**template_fields)
         except KeyError as e:
-            logging.error(f"Missing key in template: {template}. Template requires keys that weren't provided. Error: {e}")
+            logging.error(f"Missing key in template: {template}. You can only put these keys in the template: 'container, keywords'. Error: {e}")
         except Exception as e:
             logging.error(f"Error trying to apply this template for the notification title: {template} {e}")
 
-    elif isinstance(keywords_found, list):
+    if not title and isinstance(keywords_found, list):
         if len(keywords_found) == 1:
             keyword = keywords_found[0]
             title = f"'{keyword}' found in {container_name}"
@@ -427,8 +440,7 @@ def get_notification_title(message_config, notification_title, action):
         elif len(keywords_found) > 2:
             joined_keywords = ', '.join(f"'{word}'" for word in keywords_found)
             title = f"The following keywords were found in {container_name}: {joined_keywords}"
-        else:
-            title = f"{container_name}: {keywords_found}"
+
 
     if action and not message_config.get("notification_title"):
         action, success = action
@@ -436,6 +448,10 @@ def get_notification_title(message_config, notification_title, action):
             title = f"{container_name} was {'stopped' if action == 'stop' else 'restarted'}! - " + title
         else: 
             title = f"Failed to {'stop' if action == 'stop' else 'restart'} {container_name}!" + title
+
+    if not title:
+        title = f"{container_name}: {keywords_found}"
+
     return title
 
 
