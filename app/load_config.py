@@ -44,6 +44,11 @@ def validate_priority(v):
 class BaseConfigModel(BaseModel):
     model_config = ConfigDict(extra="ignore", validate_default=True, use_enum_values=True)
 
+
+class ExcludedKeywords(BaseConfigModel):
+    keyword: Optional[str] = None
+    regex: Optional[str] = None
+
 class Settings(BaseConfigModel):    
     log_level: str = Field("INFO", description="Logging level (DEBUG, INFO, WARNING, ERROR)")
     multi_line_entries: bool = Field(True, description="Enable multi-line log detection")
@@ -52,17 +57,15 @@ class Settings(BaseConfigModel):
     disable_config_reload_message: bool = Field(False, description="Disable config reload notification")
     disable_container_event_message: bool = Field(False, description="Disable notification on container stops/starts")
     reload_config: bool = Field(True, description="Disable config reaload on config change")
+    
     # modular settings:
     attach_logfile: bool = Field(False, description="Attach logfile to notification")
     notification_cooldown: int = Field(5, description="Cooldown in seconds for repeated alerts")
     notification_title: str = Field("default", description="Set a template for the notification title")
     action_cooldown: Optional[int] = Field(300)
     attachment_lines: int = Field(20, description="Number of log lines to include in attachments")
-
-class ExcludedKeywords(BaseConfigModel):
-    keyword: Optional[str] = None
-    regex: Optional[str] = None
-
+    hide_regex_in_title: Optional[bool] = Field(False, description="Hide the regex in the notification title")
+    excluded_keywords: Optional[List[Union[str, ExcludedKeywords]]] = Field(default=None, description="List of keywords to exclude from notifications")
 
 class ModularSettings(BaseConfigModel):
     ntfy_tags: Optional[str] = None
@@ -82,6 +85,7 @@ class ModularSettings(BaseConfigModel):
     action_cooldown: Optional[int] = None
     attach_logfile: Optional[bool] = None
     excluded_keywords: Optional[List[Union[str, ExcludedKeywords]]] = Field(default=None, description="List of keywords to exclude from notifications")
+    hide_regex_in_title: Optional[bool] = None
 
 class ActionEnum(str, Enum):
     RESTART = "restart"
@@ -93,7 +97,6 @@ class RegexItem(ModularSettings):
     regex: str
     json_template: Optional[str] = None
     template: Optional[str] = None
-    hide_pattern_in_title: Optional[bool] = None
     action: Optional[ActionEnum] = None
 
 class KeywordItem(ModularSettings):
