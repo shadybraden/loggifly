@@ -6,6 +6,7 @@ import threading
 import logging
 import traceback
 import docker
+import docker.errors
 from threading import Timer
 from docker.tls import TLSConfig
 from urllib.parse import urlparse
@@ -67,11 +68,12 @@ class ConfigHandler(FileSystemEventHandler):
         self.debounce_seconds = 2
 
     def on_modified(self, event):
-        if self.config.settings.reload_config and not event.is_directory and event.src_path.endswith('config.yaml'):
-            if self.reload_timer:
-                self.reload_timer.cancel()
-            self.reload_timer = Timer(self.debounce_seconds, self._trigger_reload)
-            self.reload_timer.start()
+        if self.config.settings.reload_config and not event.is_directory:
+            if os.path.basename(event.src_path) == "config.yaml":
+                if self.reload_timer:
+                    self.reload_timer.cancel()
+                self.reload_timer = Timer(self.debounce_seconds, self._trigger_reload)
+                self.reload_timer.start()
 
     def _trigger_reload(self):
         logging.info("Config change detected, reloading config...")
@@ -82,10 +84,7 @@ class ConfigHandler(FileSystemEventHandler):
             return
         for monitor in self.monitor_instances:
             monitor.reload_config(self.config)
-        if not self.config.settings.reload_config:
-            self.observer.stop()
-            self.logger.info("Config watcher stopped because reload_config is set to False.")
-
+        # Reminder that the config watcher does not stop when config_reload=False is set after config reload.
 
 def start_config_watcher(monitor_instances, config, path):
     observer = Observer()

@@ -103,7 +103,6 @@ class KeywordItem(ModularSettings):
     keyword: str
     json_template: Optional[str] = None
     action: Optional[ActionEnum] = None
-    
 
 class KeywordBase(BaseModel):
     keywords: List[Union[str, KeywordItem, RegexItem]] = []
@@ -147,7 +146,7 @@ class NtfyConfig(BaseConfigModel):
     token: Optional[SecretStr] = Field(default=None, description="Optional access token")
     username: Optional[str] = Field(default=None, description="Optional username")
     password: Optional[SecretStr] = Field(default=None, description="Optional password")
-    priority: Union[str, int] = 3 # Field(default=3, description="Message priority 1-5")
+    priority: Optional[Union[str, int]] = Field(default=3, description="Message priority 1-5")
     tags: Optional[str] = Field("kite,mag", description="Comma-separated tags")
 
     _validate_priority = field_validator("priority", mode="before")(validate_priority)
@@ -187,16 +186,18 @@ class GlobalConfig(BaseConfigModel):
     
     @model_validator(mode="after")
     def check_at_least_one(self) -> "GlobalConfig":
-        tmp_list = self.global_keywords.keywords 
-        if not tmp_list:
-            for c in self.containers:
-                tmp_list.extend(self.containers[c].keywords)
-            for c in self.swarm_services:
-                tmp_list.extend(self.swarm_services[c].keywords)
-        if not tmp_list:
-            raise ValueError("No keywords configured. You have to set keywords either per container or globally.")
         if not self.containers and not self.swarm_services:
             raise ValueError("You have to configure at least one container")
+        tmp_list = self.global_keywords.keywords.copy()
+        if not tmp_list:
+            if self.containers:
+                for c in self.containers:
+                    tmp_list.extend(self.containers[c].keywords)
+            if self.swarm_services:
+                for c in self.swarm_services:
+                    tmp_list.extend(self.swarm_services[c].keywords)
+        if not tmp_list:
+            raise ValueError("No keywords configured. You have to set keywords either per container or globally.")
         return self
     
 
@@ -256,11 +257,14 @@ def convert_legacy_formats(config):
                         action = "restart"
                     elif "stop" in item:
                         action = "stop"
-                    keyword = item[action]
-                    if isinstance(keyword, dict) and "regex" in keyword:
-                        container["keywords"].append({"regex": keyword["regex"], "action": action})
-                    elif isinstance(keyword, str):
-                        container["keywords"].append({"keyword": keyword, "action": action})
+                    else:
+                        action = None 
+                    if action:
+                        keyword = item[action]
+                        if isinstance(keyword, dict) and "regex" in keyword:
+                            container["keywords"].append({"regex": keyword["regex"], "action": action})
+                        elif isinstance(keyword, str):
+                            container["keywords"].append({"keyword": keyword, "action": action})
     return config_copy
 
 
@@ -369,17 +373,18 @@ def load_config(official_path="/config/config.yaml"):
         logging.warning(f"The config.yaml could not be loaded.")
         yaml_config = {}
     else:
-        logging.info(f"The config.yaml file was found in {path}.")
+        logging.info(f"The config.yaml file was found in {config_path}.")
 
     for key in required_keys:
         if key not in yaml_config or yaml_config[key] is None:
             yaml_config[key] = {}
 
+    print(f"\n\nYAML CONFIG:\n\n{yaml_config}\n\n")
     env_config = load_env_config(config_path)
-
     # Merge environment variables and yaml config
     merged_config = merge_yaml_and_env(yaml_config, env_config)
     merged_config = convert_legacy_formats(merged_config)
+    print(f"\n\nMERGED CONFIG:\n\n{merged_config}\n\n")
     # Validate the merged configuration with Pydantic
     config = GlobalConfig.model_validate(merged_config)
 

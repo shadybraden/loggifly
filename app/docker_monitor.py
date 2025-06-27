@@ -7,6 +7,7 @@ import os
 import random
 import requests
 import docker
+import docker.errors
 from datetime import datetime
 from notifier import send_notification
 from line_processor import LogProcessor
@@ -114,11 +115,13 @@ class DockerLogMonitor:
                 if self.hostname and swarm_object.hosts is not None:
                     hostnames = swarm_object.hosts.split(",")
                     if all(hn.strip() != self.hostname for hn in hostnames):
-                        self.logger.debug(f"Swarm service {container} is configured for host(s) '{', '.join(hostnames)}' but this instance is running on host '{self.hostname}'. Skipping this swarm service.")
+                        self.logger.debug(f"Swarm service {swarm} is configured for host(s) '{', '.join(hostnames)}' but this instance is running on host '{self.hostname}'. Skipping this swarm service.")
                         continue
                 self.selected_swarm_services.append(swarm)
 
     def _check_if_swarm_to_monitor(self, container):
+        if container is None:
+            return None
         labels = container.labels
         service_name = labels.get("com.docker.swarm.service.name", "")
         if service_name:
@@ -327,9 +330,9 @@ class DockerLogMonitor:
             gen = self.processor_instances[container.name]["generation"]
             while not self.shutdown_event.is_set() and not container_stop_event.is_set():
                 buffer = b""
+                not_found_error = False
                 try:
                     now = datetime.now()
-                    not_found_error = False
                     log_stream = container.logs(stream=True, follow=True, since=now)
                     self._add_stream_connection(container.name, log_stream)
                     self.logger.info(f"{container.name}: Log Stream started")
@@ -385,6 +388,7 @@ class DockerLogMonitor:
             while not self.shutdown_event.is_set():
                 now = time.time()
                 too_many_errors = False
+                container = None
                 try: 
                     event_stream = self.client.events(decode=True, filters={"event": ["start", "stop"]}, since=now)
                     self.logger.info("Docker Event Watcher started. Watching for new containers...")
@@ -405,9 +409,10 @@ class DockerLogMonitor:
                         elif event.get("Action") == "stop":
                             if container_id in self.monitored_containers:
                                 container = self.monitored_containers.get(container_id)
-                                self.logger.info(f"The Container {container.name} was stopped. Stopping Monitoring now.")
-                                self.monitored_containers.pop(container_id)
-                                self._close_stream_connection(container.name)
+                                if container:
+                                    self.logger.info(f"The Container {container.name} was stopped. Stopping Monitoring now.")
+                                    self.monitored_containers.pop(container_id)
+                                    self._close_stream_connection(container.name)
                             # else:
                             #     self.logger.debug(f'Docker Event Watcher: {event["Actor"]["Attributes"].get("name", container_id)} was stopped. Ignoring because it is not monitored')
                 except docker.errors.NotFound as e:

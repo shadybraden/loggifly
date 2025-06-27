@@ -267,17 +267,14 @@ class LogProcessor:
             time.sleep(1)
 
         for pattern in self.patterns:
-            # If there is a pattern in the line idicating a new log entry the buffer gets flushed and the line gets appended to the buffer           
+            # If there is a pattern in the line indicating a new log entry the buffer gets flushed and the line gets appended to the buffer           
             if pattern.search(line):
                 if self.buffer:
                     self._handle_and_clear_buffer()
                 self.buffer.append(line)
-                match = True
                 break
-            else:
-                match = False
         # If the line is not a new entry (no pattern was found) it gets appended to the buffer
-        if match is False:
+        else:
             if self.buffer:
                 self.buffer.append(line)
             else:
@@ -293,7 +290,7 @@ class LogProcessor:
         notification_cooldown = keyword_dict.get("notification_cooldown") if keyword_dict.get("notification_cooldown") else self.container_message_config["notification_cooldown"]
         if "regex" in keyword_dict:
             regex = keyword_dict.get("regex")
-            if ignore_keyword_time or time.time() - self.time_per_keyword.get(regex) >= int(notification_cooldown):
+            if ignore_keyword_time or time.time() - self.time_per_keyword.get(regex, 0) >= int(notification_cooldown):
                 match = re.search(regex, log_line, re.IGNORECASE)
                 if match:
                     self.time_per_keyword[regex] = time.time()
@@ -301,7 +298,7 @@ class LogProcessor:
                     return "Regex-Pattern" if hide_pattern else f"Regex: {regex}"
         else:     
             keyyword = keyword_dict.get("keyword")         
-            if ignore_keyword_time or time.time() - self.time_per_keyword.get(keyyword) >= int(notification_cooldown):
+            if ignore_keyword_time or time.time() - self.time_per_keyword.get(keyyword, 0) >= int(notification_cooldown):
                 if keyyword.lower() in log_line.lower():
                     self.time_per_keyword[keyyword] = time.time()
                     return keyyword
@@ -430,7 +427,7 @@ class LogProcessor:
 
 
 def get_notification_title(message_config, action):
-    title = None
+    title = ""
     keywords_found = message_config.get("keywords_found", "")
     notification_title = message_config.get("notification_title")
     container_name = message_config.get("container_name", "")

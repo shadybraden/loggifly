@@ -10,7 +10,15 @@ logging.getLogger(__name__)
 
 def get_ntfy_config(config, message_config, container_config):
 
-    ntfy_config = {"topic": None, "tags": None, "priority": None, "url": None, "token": None, "username": None, "password": None}
+    ntfy_config = {"topic": None, 
+                    "tags": None,
+                    "priority": None, 
+                    "url": None, 
+                    "token": None,
+                    "username": None,
+                    "password": None,
+                    "authorization": ""
+                    }
     
     global_config = config.notifications.ntfy.model_dump(exclude_none=True) if config.notifications.ntfy else {}
     container_config = container_config.model_dump(exclude_none=True) if container_config else {}
@@ -25,15 +33,10 @@ def get_ntfy_config(config, message_config, container_config):
         elif global_config.get(key) is not None:
             ntfy_config[key] = global_config.get(key)
 
-    # ntfy_config["url"] = config.notifications.ntfy.url
-    
     for key, value in ntfy_config.items():
         if value and isinstance(value, SecretStr):
             ntfy_config[key] = value.get_secret_value()
 
-
-
-    # if config.notifications.ntfy.token:
     if ntfy_config.get("token"):
         ntfy_config["authorization"] = f"Bearer {ntfy_config['token']}"
     # elif config.notifications.ntfy.username and config.notifications.ntfy.password:
@@ -166,7 +169,7 @@ def send_webhook(json_data, webhook_config):
 
 
 def send_notification(config: GlobalConfig, container_name, title=None, message=None, message_config=None, container_config=None, hostname=None):
-    message = message.replace(r"\n", "\n").strip()
+    message = message.replace(r"\n", "\n").strip() if message else ""
     # When multiple hosts are set the hostname is added to the title, when only one host is set the hostname is an empty string
     title = f"[{hostname}] - {title}" if hostname else title
     file_path = message_config.get("file_path") if message_config else None
@@ -181,7 +184,7 @@ def send_notification(config: GlobalConfig, container_name, title=None, message=
 
     webhook_config = get_webhook_config(config, message_config, container_config)
     if (webhook_config and webhook_config.get("url")):
-        keywords = message_config.get("keywords_found", None)
+        keywords = message_config.get("keywords_found", None) if message_config else None
         json_data = {"container": container_name, "keywords": keywords, "title": title, "message": message, "host": hostname}
         send_webhook(json_data, webhook_config)
 
