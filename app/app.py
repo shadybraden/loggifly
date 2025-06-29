@@ -56,9 +56,8 @@ def create_handle_signal(monitor_instances, config, config_observer):
 
 class ConfigHandler(FileSystemEventHandler):
     """
-    When a config.yaml change is detected, the reload_config method is called on each host's DockerLogMonitor instance.
-    This method then updates all LogProcessor instances (from line_processor.py) by calling their load_config_variables function.
-    This ensures that any new keywords, settings, or other configuration changes are correctly applied especiaööy in the code that handles keyword searching in line_processor.py.    
+    Handles config.yaml changes by reloading configuration and updating all DockerLogMonitor instances.
+    Ensures new keywords, settings, or other changes are applied, especially for keyword searching in line_processor.py.
     """
     def __init__(self, monitor_instances, config):
         self.monitor_instances = monitor_instances  
@@ -68,6 +67,7 @@ class ConfigHandler(FileSystemEventHandler):
         self.debounce_seconds = 2
 
     def on_modified(self, event):
+        # Debounced reload of config.yaml if reload_config is enabled
         if self.config.settings.reload_config and not event.is_directory:
             if os.path.basename(event.src_path) == "config.yaml":
                 if self.reload_timer:
@@ -84,9 +84,12 @@ class ConfigHandler(FileSystemEventHandler):
             return
         for monitor in self.monitor_instances:
             monitor.reload_config(self.config)
-        # Reminder that the config watcher does not stop when config_reload=False is set after config reload.
+        # Reminder: The config watcher remains active even if reload_config is set to False after reload.
 
 def start_config_watcher(monitor_instances, config, path):
+    """
+    Starts a watchdog observer to monitor config.yaml for changes and trigger reloads.
+    """
     observer = Observer()
     observer.schedule(ConfigHandler(monitor_instances, config), path=path, recursive=False)
     observer.start()
@@ -95,7 +98,7 @@ def start_config_watcher(monitor_instances, config, path):
 
 def check_monitor_status(docker_hosts, global_shutdown_event):
     """
-    Every 60s this function checks whether the docker hosts are still monitored and tries to reconnect if the connection is lost.
+    Periodically checks Docker host connections and attempts reconnection if lost.
     """
     def check_and_reconnect():
         while True:
@@ -126,11 +129,11 @@ def check_monitor_status(docker_hosts, global_shutdown_event):
     return thread
 
 
-def create_docker_clients() -> dict[str, dict[str, Any]]: # {host: {client: DockerClient, tls_config: TLSConfig, label: str}}
+def create_docker_clients() -> dict[str, dict[str, Any]]:
     """
-    This function creates Docker clients for all hosts specified in the DOCKER_HOST environment variables + the mounted docker socket.
-    TLS certificates are searched in '/certs/{ca,cert,key}'.pem 
-    or '/certs/{host}/{ca,cert,key}.pem' (to use in case of multiple hosts) with {host} being the IP or FQDN of the host.
+    Creates Docker clients for all hosts specified in the DOCKER_HOST environment variable and the local Docker socket.
+    Searches for TLS certificates in '/certs/{ca,cert,key}.pem' or '/certs/{host}/{ca,cert,key}.pem'.
+    Returns a dictionary mapping host to client, TLS config, and label.
     """
     def get_tls_config(hostname):
         cert_locations = [
@@ -176,14 +179,13 @@ def create_docker_clients() -> dict[str, dict[str, Any]]: # {host: {client: Dock
         parsed = urlparse(host)
         tls_config = None
         if parsed.scheme == "unix":
-            pass
+            pass  # No TLS for local socket
         elif parsed.scheme == "tcp":
             hostname = parsed.hostname
             tls_config = get_tls_config(hostname)
         try:
             if "podman" in host:
-                # Podman seems to use this timeout for the log streams as well, so when there are no logs for a while (or maybe only at the beginning), the connection is closed.
-                # This is a workaround to avoid the connection being closed too early.
+                # Podman workaround: set short timeout for initial ping, then increase for log streaming.
                 client = docker.DockerClient(base_url=host, tls=tls_config, timeout=10)
                 if client.ping():
                     logging.info(f"Successfully connected to Podman client on {host}")
@@ -212,6 +214,9 @@ def create_docker_clients() -> dict[str, dict[str, Any]]: # {host: {client: Dock
 
 
 def start_loggifly():
+    """
+    Main entry point for LoggiFly. Loads config, sets up Docker clients, monitoring, config watcher, and signal handlers.
+    """
     try:
         config, path = load_config()
     except ValidationError as e:
@@ -232,9 +237,9 @@ def start_loggifly():
                 hostname = label if label else client.info()["Name"]
             except Exception as e:
                 hostname = f"Host-{number}"
-                logging.warning(f"Could not get hostname for {host}. LoggiFly will call this host '{hostname}' in notifications and in logging to differentiate it from the other hosts."
-                    f"\nThis error might have been raised because you are using a Socket Proxy without the environment variable 'INFO=1'"
-                    f"\nYou can also set a label for the docker host in the DOCKER_HOST environment variable like this: 'tcp://host:2375|label' to use instead of the hostname."
+                logging.warning(
+                    f"Could not get hostname for {host}. LoggiFly will call this host '{hostname}' in notifications and logging to differentiate it."
+                    f"\nThis may occur if using a Socket Proxy without 'INFO=1', or you can set a label in DOCKER_HOST as 'tcp://host:2375|label'."
                     f"\nError details: {e}")    
                                 
         logging.info(f"Starting monitoring for {host} {'(' + hostname + ')' if hostname else ''}")
@@ -247,7 +252,7 @@ def start_loggifly():
     if config.settings.reload_config and isinstance(path, str) and os.path.exists(path):
         config_observer = start_config_watcher(monitor_instances, config, path)
     else:
-        logging.debug("Config watcher was not started because reload_config is set to False or because no valid config path exist.")
+        logging.debug("Config watcher not started: reload_config is False or config path invalid.")
         config_observer = None
 
     handle_signal, global_shutdown_event = create_handle_signal(monitor_instances, config, config_observer)

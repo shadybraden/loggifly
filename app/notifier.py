@@ -9,17 +9,22 @@ from load_config import GlobalConfig
 logging.getLogger(__name__)
 
 def get_ntfy_config(config, message_config, container_config):
+    """
+    Aggregate ntfy notification configuration from global, container, and message-specific sources.
+    Precedence: message_config > container_config > global_config.
+    Handles secret values and authorization header construction.
+    """
+    ntfy_config = {
+        "topic": None,
+        "tags": None,
+        "priority": None,
+        "url": None,
+        "token": None,
+        "username": None,
+        "password": None,
+        "authorization": ""
+    }
 
-    ntfy_config = {"topic": None, 
-                    "tags": None,
-                    "priority": None, 
-                    "url": None, 
-                    "token": None,
-                    "username": None,
-                    "password": None,
-                    "authorization": ""
-                    }
-    
     global_config = config.notifications.ntfy.model_dump(exclude_none=True) if config.notifications.ntfy else {}
     container_config = container_config.model_dump(exclude_none=True) if container_config else {}
     message_config = message_config if message_config else {}
@@ -39,16 +44,19 @@ def get_ntfy_config(config, message_config, container_config):
 
     if ntfy_config.get("token"):
         ntfy_config["authorization"] = f"Bearer {ntfy_config['token']}"
-    # elif config.notifications.ntfy.username and config.notifications.ntfy.password:
     elif ntfy_config.get('username') and ntfy_config.get('password'):
         credentials = f"{ntfy_config['username']}:{ntfy_config['password']}"
         encoded_credentials = base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
         ntfy_config["authorization"] = f"Basic {encoded_credentials}"
-    logging.debug(f"Ntfy-Config: {ntfy_config}")
     return ntfy_config
 
 
 def get_apprise_url(config, message_config, container_config):
+    """
+    Retrieve the Apprise notification URL from message, container, or global config.
+    Precedence: message_config > container_config > global_config.
+    Handles secret values.
+    """
     apprise_url = None
     global_config = config.notifications.apprise.model_dump(exclude_none=True) if config.notifications.apprise else {}
     container_config = container_config.model_dump(exclude_none=True) if container_config else {}
@@ -63,13 +71,16 @@ def get_apprise_url(config, message_config, container_config):
 
     if apprise_url and isinstance(apprise_url, SecretStr):
         apprise_url = apprise_url.get_secret_value() if apprise_url else None
-
-    logging.debug(f"Apprise-URL: {apprise_url}")
     return apprise_url
 
+
 def get_webhook_config(config, message_config, container_config):
+    """
+    Aggregate webhook configuration from global, container, and message-specific sources.
+    Precedence: message_config > container_config > global_config.
+    """
     webhook_config = {"url": None, "headers": {}}
-    
+
     global_config = config.notifications.webhook.model_dump(exclude_none=True) if config.notifications.webhook else {}
     container_config = container_config.model_dump(exclude_none=True) if container_config else {}
     message_config = message_config if message_config else {}
@@ -82,16 +93,18 @@ def get_webhook_config(config, message_config, container_config):
             webhook_config[key] = container_config.get(webhook_key)
         elif global_config.get(key) is not None:
             webhook_config[key] = global_config.get(key)
-    
-    logging.debug(f"Webhook-Config: {webhook_config}")
     return webhook_config
 
 
 def send_apprise_notification(url, message, title, file_path=None):
+    """
+    Send a notification using Apprise.
+    Optionally attaches a file. Message is truncated if too long.
+    """
     apobj = apprise.Apprise()
     apobj.add(url)
     message = ("This message had to be shortened: \n" if len(message) > 1900 else "") + message[:1900]
-    try: 
+    try:
         if file_path is None:
             apobj.notify(
                 title=title,
@@ -109,13 +122,17 @@ def send_apprise_notification(url, message, title, file_path=None):
 
 
 def send_ntfy_notification(ntfy_config, message, title, file_path=None):
+    """
+    Send a notification via ntfy with optional file attachment.
+    Handles authorization and message truncation.
+    """
     message = ("This message had to be shortened: \n" if len(message) > 3900 else "") + message[:3900]
     headers = {
         "Title": title,
         "Tags": f"{ntfy_config['tags']}",
         "Icon": "https://raw.githubusercontent.com/clemcer/loggifly/main/images/icon.png",
         "Priority": f"{ntfy_config['priority']}"
-        }
+    }
     if ntfy_config.get('authorization'):
         headers["Authorization"] = f"{ntfy_config.get('authorization')}"
 
@@ -124,6 +141,8 @@ def send_ntfy_notification(ntfy_config, message, title, file_path=None):
             file_name = file_path.split("/")[-1]
             headers["Filename"] = file_name
             with open(file_path, "rb") as file:
+                # When attaching a file the message can not be passed normally.
+                # So if the message is short, include it as query param, else omit it
                 if len(message) < 199:
                     response = requests.post(
                         f"{ntfy_config['url']}/{ntfy_config['topic']}?message={urllib.parse.quote(message)}",
@@ -138,7 +157,7 @@ def send_ntfy_notification(ntfy_config, message, title, file_path=None):
                     )
         else:
             response = requests.post(
-                f"{ntfy_config['url']}/{ntfy_config['topic']}", 
+                f"{ntfy_config['url']}/{ntfy_config['topic']}",
                 data=message,
                 headers=headers
             )
@@ -151,17 +170,20 @@ def send_ntfy_notification(ntfy_config, message, title, file_path=None):
 
 
 def send_webhook(json_data, webhook_config):
+    """
+    Send a POST request to a custom webhook with the provided JSON payload and headers.
+    """
     url, headers = webhook_config.get("url"), webhook_config.get("headers", {})
-    try: 
+    try:
         response = requests.post(
             url=url,
             headers=headers,
             json=json_data,
             timeout=10
-            )
+        )
         if response.status_code == 200:
             logging.info(f"Webhook sent successfully.")
-            #logging.debug(f"Webhook Response: {json.dumps(response.json(), indent=2)}")
+            # logging.debug(f"Webhook Response: {json.dumps(response.json(), indent=2)}")
         else:
             logging.error("Error while trying to send POST request to custom webhook: %s", response.text)
     except requests.RequestException as e:
@@ -169,8 +191,12 @@ def send_webhook(json_data, webhook_config):
 
 
 def send_notification(config: GlobalConfig, container_name, title=None, message=None, message_config=None, container_config=None, hostname=None):
+    """
+    Dispatch a notification using ntfy, Apprise, and/or webhook based on configuration.
+    Handles message formatting, file attachments, and host labeling.
+    """
     message = message.replace(r"\n", "\n").strip() if message else ""
-    # When multiple hosts are set the hostname is added to the title, when only one host is set the hostname is an empty string
+    # If multiple hosts are set, prepend hostname to title
     title = f"[{hostname}] - {title}" if hostname else title
     file_path = message_config.get("file_path") if message_config else None
 
@@ -185,6 +211,12 @@ def send_notification(config: GlobalConfig, container_name, title=None, message=
     webhook_config = get_webhook_config(config, message_config, container_config)
     if (webhook_config and webhook_config.get("url")):
         keywords = message_config.get("keywords_found", None) if message_config else None
-        json_data = {"container": container_name, "keywords": keywords, "title": title, "message": message, "host": hostname}
+        json_data = {
+            "container": container_name,
+            "keywords": keywords,
+            "title": title,
+            "message": message,
+            "host": hostname
+        }
         send_webhook(json_data, webhook_config)
 

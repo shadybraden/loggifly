@@ -16,4 +16,7 @@ COPY app/app.py .
 COPY app/docker_monitor.py .
 COPY app/line_processor.py .
 
+ARG IMAGE_SOURCE_ARG
+ENV IMAGE_SOURCE=${IMAGE_SOURCE_ARG:-"dockerhub"}
+
 ENTRYPOINT ["/bin/sh", "./entrypoint.sh"]

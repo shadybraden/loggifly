@@ -1,4 +1,3 @@
-
 from pydantic import (
     BaseModel,
     Field,
@@ -17,14 +16,17 @@ import yaml
 
 logging.getLogger(__name__)
 
-""" 
-this may look unnecessarily complicated but I wanted to learn and use pydantic 
-I didn't manage to use pydantic's integrated environment variable loading
-because I needed env to override yaml data and yaml to override default values and I could not get it to work.
-So now I first load the yaml config and the environment variables, merge them and then I validate the merged config with pydantic
+"""
+This module handles configuration loading and validation using Pydantic models. 
+YAML configuration is loaded first, then environment variables are merged in, allowing environment variables to override YAML values, and YAML to override defaults. 
+The merged configuration is validated with Pydantic. Legacy config formats are migrated for compatibility.
 """
 
 def validate_priority(v):
+    """
+    Validate and normalize the priority value for notifications. Accepts both string and integer representations.
+    Returns a valid priority or the default if invalid.
+    """
     if isinstance(v, str):
         try:
             v = int(v)
@@ -50,6 +52,9 @@ class ExcludedKeywords(BaseConfigModel):
     regex: Optional[str] = None
 
 class Settings(BaseConfigModel):    
+    """
+    Application-wide settings for logging, notifications, and feature toggles.
+    """
     log_level: str = Field("INFO", description="Logging level (DEBUG, INFO, WARNING, ERROR)")
     multi_line_entries: bool = Field(True, description="Enable multi-line log detection")
     disable_start_message: bool = Field(False, description="Disable startup notification")
@@ -68,6 +73,9 @@ class Settings(BaseConfigModel):
     excluded_keywords: Optional[List[Union[str, ExcludedKeywords]]] = Field(default=None, description="List of keywords to exclude from notifications")
 
 class ModularSettings(BaseConfigModel):
+    """
+    Optional settings that can be overridden per keyword or container.
+    """
     ntfy_tags: Optional[str] = None
     ntfy_topic: Optional[str] = None
     ntfy_priority: Optional[int] = None
@@ -94,22 +102,33 @@ class ActionEnum(str, Enum):
 
 
 class RegexItem(ModularSettings):
+    """
+    Model for a regex-based keyword with optional settings.
+    """
     regex: str
     json_template: Optional[str] = None
     template: Optional[str] = None
     action: Optional[ActionEnum] = None
 
 class KeywordItem(ModularSettings):
+    """
+    Model for a string-based keyword with optional settings.
+    """
     keyword: str
     json_template: Optional[str] = None
     action: Optional[ActionEnum] = None
 
 class KeywordBase(BaseModel):
+    """
+    Base model for keyword lists, with pre-validation to handle legacy and misconfigured entries.
+    """
     keywords: List[Union[str, KeywordItem, RegexItem]] = []
 
-    # for sorting out misconfigured keywords, providing warnings and converting integers to strings (before validation)
     @model_validator(mode="before")
     def int_to_string(cls, values):
+        """
+        Convert integer keywords to strings and filter out misconfigured entries before validation.
+        """
         for field in ["keywords", "keywords_with_attachment"]:
             if field in values and isinstance(values[field], list):
                 converted = []
@@ -133,6 +152,9 @@ class KeywordBase(BaseModel):
         return values
     
 class ContainerConfig(KeywordBase, ModularSettings):    
+    """
+    Model for per-container configuration, including keywords and setting overrides.
+    """
     hosts: Optional[str] = Field(default=None, description="The host in which the container should be monitored") 
 
     _validate_priority = field_validator("ntfy_priority", mode="before")(validate_priority)
@@ -165,11 +187,13 @@ class NotificationsConfig(BaseConfigModel):
 
     @model_validator(mode="after")
     def check_at_least_one(self) -> "NotificationsConfig":
+        # Ensure at least one notification service is configured
         if self.ntfy is None and self.apprise is None and self.webhook is None:
             raise ValueError("At least on of these has to be configured: 'apprise' / 'ntfy' / 'webhook'")
         return self
 
 class GlobalConfig(BaseConfigModel):
+    """Root configuration model for the application"""
     containers: Optional[Dict[str, ContainerConfig]] = Field(default=None)
     swarm_services: Optional[Dict[str, ContainerConfig]] = Field(default=None)
     global_keywords: GlobalKeywords
@@ -178,14 +202,15 @@ class GlobalConfig(BaseConfigModel):
 
     @model_validator(mode="before")
     def transform_legacy_format(cls, values):
+        """Migrate legacy list-based container definitions to dictionary format."""
         # Convert list containers to dict format
         if isinstance(values.get("containers"), list):
             values["containers"] = {name: {} for name in values["containers"]}
-
         return values
     
     @model_validator(mode="after")
     def check_at_least_one(self) -> "GlobalConfig":
+        # Ensure at least one container or swarm service and at least one keyword is configured
         if not self.containers and not self.swarm_services:
             raise ValueError("You have to configure at least one container")
         tmp_list = self.global_keywords.keywords.copy()
@@ -202,6 +227,7 @@ class GlobalConfig(BaseConfigModel):
     
 
 def format_pydantic_error(e: ValidationError) -> str:
+    """Format Pydantic validation errors for user-friendly display."""
     error_messages = []
     for error in e.errors():
         location = ".".join(map(str, error["loc"]))
@@ -212,6 +238,7 @@ def format_pydantic_error(e: ValidationError) -> str:
 
 
 def prettify_config(data):
+    """Recursively format config dict for display, masking secrets and ordering keys for readability."""
     if isinstance(data, dict):
         priority_keys = [k for k in ("regex", "keyword") if k in data]
         if priority_keys:
@@ -227,6 +254,9 @@ def prettify_config(data):
         return data
 
 def convert_legacy_formats(config):
+    """
+    Migrate legacy configuration fields (e.g., keywords_with_attachment, action_keywords) to the current format.
+    """
     def _migrate_keywords(legacy, new, new_field):
         new_key, new_value = new_field
         for item in legacy:
@@ -269,6 +299,9 @@ def convert_legacy_formats(config):
 
 
 def merge_yaml_and_env(yaml, env_update):
+    """
+    Recursively merge environment variable config into YAML config, overriding YAML values where present in env_update.
+    """
     for key, value in env_update.items():
         if isinstance(value, dict) and key in yaml and key != {}:
             merge_yaml_and_env(yaml[key],value)
@@ -279,6 +312,9 @@ def merge_yaml_and_env(yaml, env_update):
 
 
 def load_env_config(config_path=None): 
+    """
+    Load configuration values from environment variables, returning a config dict compatible with the YAML structure.
+    """
     env_config = { "notifications": {}, "settings": {}, "global_keywords": {}, "containers": {}}
     settings_values = {
         "log_level": os.getenv("LOG_LEVEL"),
@@ -344,8 +380,8 @@ def load_env_config(config_path=None):
 
 def load_config(official_path="/config/config.yaml"):
     """
-    Load the configuration from a YAML file and environment variables.
-    The config.yaml is expected in /config/config.yaml or /app/config.yaml (older version)
+    Load, merge, and validate the application configuration from YAML and environment variables.
+    Returns the validated config object and the path used.
     """
     config_path = None
     required_keys = ["containers", "notifications", "settings", "global_keywords"]
@@ -384,7 +420,6 @@ def load_config(official_path="/config/config.yaml"):
     # Merge environment variables and yaml config
     merged_config = merge_yaml_and_env(yaml_config, env_config)
     merged_config = convert_legacy_formats(merged_config)
-    print(f"\n\nMERGED CONFIG:\n\n{merged_config}\n\n")
     # Validate the merged configuration with Pydantic
     config = GlobalConfig.model_validate(merged_config)
 
