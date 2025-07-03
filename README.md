@@ -8,6 +8,7 @@
 <h1 align="center">LoggiFly</h1>
 
   <p align="center">
+    <a href="https://clemcer.github.io/loggifly/">Documentation</a>
     <a href="https://github.com/clemcer/loggifly/issues">Report Bug</a>
     <a href="https://github.com/clemcer/loggifly/issues">Request Feature</a>
   </p>
