@@ -3,7 +3,7 @@
 CONFIG_DIR=/config
 CONFIG_TEMPLATE=$CONFIG_DIR/config_template.yaml
 CONFIG_FILE=$CONFIG_DIR/config.yaml
-CONFIG_URL=https://raw.githubusercontent.com/clemcer/loggifly/refs/heads/main/config_template.yaml
+CONFIG_URL=https://raw.githubusercontent.com/clemcer/loggifly/refs/heads/main/docs/configs/config_template.yaml
 
 if [ -d "$CONFIG_DIR" ]; then
     #echo "/config exists."

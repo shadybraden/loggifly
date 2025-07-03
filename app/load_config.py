@@ -273,28 +273,29 @@ def convert_legacy_formats(config):
         config_copy["global_keywords"].setdefault("keywords", [])
         _migrate_keywords(global_with_attachment, config_copy["global_keywords"]["keywords"], ("attach_logfile", True))
 
-    for container in config_copy.get("containers", {}).values():
-        container.setdefault("keywords", [])
-        keywords_with_attachment = container.pop("keywords_with_attachment", None)
-        if keywords_with_attachment is not None:
-            _migrate_keywords(keywords_with_attachment, container["keywords"], ("attach_logfile", True))
-        
-        action_keywords = container.pop("action_keywords", None)
-        if action_keywords is not None:
-            for item in action_keywords:
-                if isinstance(item, dict):
-                    if "restart" in item:
-                        action = "restart"
-                    elif "stop" in item:
-                        action = "stop"
-                    else:
-                        action = None 
-                    if action:
-                        keyword = item[action]
-                        if isinstance(keyword, dict) and "regex" in keyword:
-                            container["keywords"].append({"regex": keyword["regex"], "action": action})
-                        elif isinstance(keyword, str):
-                            container["keywords"].append({"keyword": keyword, "action": action})
+    for container_object in ["containers", "swarm_services"]:
+        for container in config_copy.get(container_object, {}).values():
+            container.setdefault("keywords", [])
+            keywords_with_attachment = container.pop("keywords_with_attachment", None)
+            if keywords_with_attachment is not None:
+                _migrate_keywords(keywords_with_attachment, container["keywords"], ("attach_logfile", True))
+            
+            action_keywords = container.pop("action_keywords", None)
+            if action_keywords is not None:
+                for item in action_keywords:
+                    if isinstance(item, dict):
+                        if "restart" in item:
+                            action = "restart"
+                        elif "stop" in item:
+                            action = "stop"
+                        else:
+                            action = None 
+                        if action:
+                            keyword = item[action]
+                            if isinstance(keyword, dict) and "regex" in keyword:
+                                container["keywords"].append({"regex": keyword["regex"], "action": action})
+                            elif isinstance(keyword, str):
+                                container["keywords"].append({"keyword": keyword, "action": action})
     return config_copy
 
 
@@ -315,7 +316,7 @@ def load_env_config(config_path=None):
     """
     Load configuration values from environment variables, returning a config dict compatible with the YAML structure.
     """
-    env_config = { "notifications": {}, "settings": {}, "global_keywords": {}, "containers": {}}
+    env_config = { "notifications": {}, "settings": {}, "global_keywords": {}}
     settings_values = {
         "log_level": os.getenv("LOG_LEVEL"),
         "attachment_lines": os.getenv("ATTACHMENT_LINES"),
@@ -327,7 +328,10 @@ def load_env_config(config_path=None):
         "disable_restart_message": os.getenv("DISABLE_CONFIG_RELOAD_MESSAGE"),
         "disable_shutdown_message": os.getenv("DISABLE_SHUTDOWN_MESSAGE"),
         "disable_container_event_message": os.getenv("DISABLE_CONTAINER_EVENT_MESSAGE"),
-        "action_cooldown": os.getenv("ACTION_COOLDOWN")
+        "action_cooldown": os.getenv("ACTION_COOLDOWN"),
+        "attach_logfile": os.getenv("ATTACH_LOGFILE", "false").lower() == "true",
+        "hide_regex_in_title": os.getenv("HIDE_REGEX_IN_TITLE", "false").lower() == "true",
+        "excluded_keywords": [kw.strip() for kw in os.getenv("EXCLUDED_KEYWORDS", "").split(",") if kw.strip()] if os.getenv("EXCLUDED_KEYWORDS") else None
         } 
     ntfy_values =  {
         "url": os.getenv("NTFY_URL"),
@@ -351,6 +355,7 @@ def load_env_config(config_path=None):
     }
     # Fill env_config dict with environment variables if they are set
     if os.getenv("CONTAINERS"):
+        env_config["containers"] = {}
         for c in os.getenv("CONTAINERS", "").split(","):
             c = c.strip()
             env_config["containers"][c] = {}
@@ -384,7 +389,7 @@ def load_config(official_path="/config/config.yaml"):
     Returns the validated config object and the path used.
     """
     config_path = None
-    required_keys = ["containers", "notifications", "settings", "global_keywords"]
+    required_keys = ["notifications", "settings", "global_keywords"]
     yaml_config = None
     legacy_path = "/app/config.yaml"
     paths = [official_path, legacy_path]
@@ -415,7 +420,6 @@ def load_config(official_path="/config/config.yaml"):
         if key not in yaml_config or yaml_config[key] is None:
             yaml_config[key] = {}
 
-    print(f"\n\nYAML CONFIG:\n\n{yaml_config}\n\n")
     env_config = load_env_config(config_path)
     # Merge environment variables and yaml config
     merged_config = merge_yaml_and_env(yaml_config, env_config)

@@ -101,10 +101,10 @@ def send_apprise_notification(url, message, title, file_path=None):
     Send a notification using Apprise.
     Optionally attaches a file. Message is truncated if too long.
     """
-    apobj = apprise.Apprise()
-    apobj.add(url)
     message = ("This message had to be shortened: \n" if len(message) > 1900 else "") + message[:1900]
     try:
+        apobj = apprise.Apprise()
+        apobj.add(url)
         if file_path is None:
             apobj.notify(
                 title=title,

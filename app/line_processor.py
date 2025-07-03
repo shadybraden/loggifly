@@ -169,7 +169,7 @@ class LogProcessor:
         If multi-line mode is off or no pattern is detected, processes as single line; otherwise, processes as part of a multi-line entry.
         """
         clean_line = re.sub(r"\x1b\[[0-9;]*m", "", line)
-        if self.multi_line_config == False:
+        if self.multi_line_config is False:
             self._search_and_send(clean_line)
         else:
             if self.line_count < self.line_limit:
@@ -202,10 +202,10 @@ class LogProcessor:
         sorted_patterns = sorted(self.patterns_count.items(), key=lambda x: x[1], reverse=True)
         threshold = max(5, int(self.line_count * 0.075))
 
-        for pattern in sorted_patterns:
-            if pattern[0] not in self.patterns and pattern[1] > threshold:
-                self.patterns.append(pattern[0])
-                self.logger.debug(f"{self.container_name}: Found pattern: {pattern[0]} with {pattern[1]} matches of {self.line_count} lines. {round(pattern[1] / self.line_count * 100, 2)}%")
+        for pattern, count in sorted_patterns:
+            if pattern not in self.patterns and count > threshold:
+                self.patterns.append(pattern)
+                self.logger.debug(f"{self.container_name}: Found pattern: {pattern} with {count} matches of {self.line_count} lines. {round(count / self.line_count * 100, 2)}%")
                 self.valid_pattern = True
         if self.patterns == []:
             self.valid_pattern = False
@@ -425,7 +425,7 @@ def get_notification_title(message_config, action):
     """
     title = ""
     keywords_found = message_config.get("keywords_found", "")
-    notification_title = message_config.get("notification_title")
+    notification_title = message_config.get("notification_title", "default")
     container_name = message_config.get("container_name", "")
 
     if notification_title.strip().lower() != "default":
