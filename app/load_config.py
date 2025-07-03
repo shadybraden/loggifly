@@ -204,8 +204,18 @@ class GlobalConfig(BaseConfigModel):
     def transform_legacy_format(cls, values):
         """Migrate legacy list-based container definitions to dictionary format."""
         # Convert list containers to dict format
-        if isinstance(values.get("containers"), list):
-            values["containers"] = {name: {} for name in values["containers"]}
+        for container_object in ["containers", "swarm_services"]:
+            if isinstance(values.get(container_object), list):
+                values[container_object] = {name: {} for name in values[container_object]}
+            for container in values.get(container_object, {}):
+                if isinstance(values.get(container_object).get(container), list):
+                    values[container_object][container] = {
+                        "keywords": values[container_object][container],
+                    }
+                elif values.get(container_object).get(container) is None:
+                    values[container_object][container] = {
+                        "keywords": [],
+                    }
         return values
     
     @model_validator(mode="after")
@@ -272,15 +282,20 @@ def convert_legacy_formats(config):
     if global_with_attachment is not None:
         config_copy["global_keywords"].setdefault("keywords", [])
         _migrate_keywords(global_with_attachment, config_copy["global_keywords"]["keywords"], ("attach_logfile", True))
-
+    
     for container_object in ["containers", "swarm_services"]:
-        for container in config_copy.get(container_object, {}).values():
-            container.setdefault("keywords", [])
-            keywords_with_attachment = container.pop("keywords_with_attachment", None)
+        if container_object not in config_copy:
+            continue
+        print(f"Processing {container_object}... VALUES: {config_copy.get(container_object, {})}")
+        for container_config in config_copy.get(container_object, {}).values():
+            if container_config is None:
+                continue
+            container_config.setdefault("keywords", [])
+            keywords_with_attachment = container_config.pop("keywords_with_attachment", None)
             if keywords_with_attachment is not None:
-                _migrate_keywords(keywords_with_attachment, container["keywords"], ("attach_logfile", True))
+                _migrate_keywords(keywords_with_attachment, container_config["keywords"], ("attach_logfile", True))
             
-            action_keywords = container.pop("action_keywords", None)
+            action_keywords = container_config.pop("action_keywords", None)
             if action_keywords is not None:
                 for item in action_keywords:
                     if isinstance(item, dict):
@@ -293,9 +308,9 @@ def convert_legacy_formats(config):
                         if action:
                             keyword = item[action]
                             if isinstance(keyword, dict) and "regex" in keyword:
-                                container["keywords"].append({"regex": keyword["regex"], "action": action})
+                                container_config["keywords"].append({"regex": keyword["regex"], "action": action})
                             elif isinstance(keyword, str):
-                                container["keywords"].append({"keyword": keyword, "action": action})
+                                container_config["keywords"].append({"keyword": keyword, "action": action})
     return config_copy
 
 
