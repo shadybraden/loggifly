@@ -187,9 +187,8 @@ class NotificationsConfig(BaseConfigModel):
 
     @model_validator(mode="after")
     def check_at_least_one(self) -> "NotificationsConfig":
-        # Ensure at least one notification service is configured
         if self.ntfy is None and self.apprise is None and self.webhook is None:
-            raise ValueError("At least on of these has to be configured: 'apprise' / 'ntfy' / 'webhook'")
+            logging.warning("You haven't configured any notification services. Notifications will not be sent.")
         return self
 
 class GlobalConfig(BaseConfigModel):
@@ -286,7 +285,6 @@ def convert_legacy_formats(config):
     for container_object in ["containers", "swarm_services"]:
         if container_object not in config_copy:
             continue
-        print(f"Processing {container_object}... VALUES: {config_copy.get(container_object, {})}")
         for container_config in config_copy.get(container_object, {}).values():
             if container_config is None:
                 continue
@@ -327,7 +325,43 @@ def merge_yaml_and_env(yaml, env_update):
     return yaml
 
 
-def load_env_config(config_path=None): 
+def load_config(official_path="/config/config.yaml"):
+    """
+    Load, merge, and validate the application configuration from YAML and environment variables.
+    Returns the validated config object and the path used.
+    """
+    config_path = None
+    required_keys = ["notifications", "settings", "global_keywords"]
+    yaml_config = None
+    legacy_path = "/app/config.yaml"
+    paths = [official_path, legacy_path]
+    for path in paths: 
+        logging.debug(f"Trying path: {path}")
+        if os.path.isfile(path):
+            try:
+                with open(path, "r") as file:
+                    yaml_config = yaml.safe_load(file)
+                    config_path = path
+                    break
+            except FileNotFoundError:
+                logging.info(f"Error loading the config.yaml file from {path}")
+            except yaml.YAMLError as e:
+                logging.error(f"Error parsing the YAML file: {e}")
+            except Exception as e:
+                logging.error(f"Unexpected error loading the config.yaml file: {e}")
+        else:
+            logging.debug(f"The path {path} does not exist.")
+
+    if yaml_config is None:
+        logging.warning(f"The config.yaml could not be loaded.")
+        yaml_config = {}
+    else:
+        logging.info(f"The config.yaml file was found in {config_path}.")
+
+    for key in required_keys:
+        if key not in yaml_config or yaml_config[key] is None:
+            yaml_config[key] = {}
+
     """
     Load configuration values from environment variables, returning a config dict compatible with the YAML structure.
     """
@@ -383,10 +417,14 @@ def load_env_config(config_path=None):
 
     if any(ntfy_values.values()):
         env_config["notifications"]["ntfy"] = ntfy_values
+        yaml_config["notifications"]["ntfy"] = {} if yaml_config["notifications"].get("ntfy") is None else yaml_config["notifications"]["ntfy"]
+
     if apprise_values["url"]: 
         env_config["notifications"]["apprise"] = apprise_values
+
     if webhook_values.get("url"):
         env_config["notifications"]["webhook"] = webhook_values
+        yaml_config["notifications"]["webhook"] = {} if yaml_config["notifications"].get("webhook") is None else yaml_config["notifications"]["webhook"]
 
     for k, v in global_keywords_values.items():
         if v:
@@ -395,47 +433,7 @@ def load_env_config(config_path=None):
     for key, value in settings_values.items(): 
         if value is not None:
             env_config["settings"][key] = value
-    return env_config
 
-
-def load_config(official_path="/config/config.yaml"):
-    """
-    Load, merge, and validate the application configuration from YAML and environment variables.
-    Returns the validated config object and the path used.
-    """
-    config_path = None
-    required_keys = ["notifications", "settings", "global_keywords"]
-    yaml_config = None
-    legacy_path = "/app/config.yaml"
-    paths = [official_path, legacy_path]
-    for path in paths: 
-        logging.debug(f"Trying path: {path}")
-        if os.path.isfile(path):
-            try:
-                with open(path, "r") as file:
-                    yaml_config = yaml.safe_load(file)
-                    config_path = path
-                    break
-            except FileNotFoundError:
-                logging.info(f"Error loading the config.yaml file from {path}")
-            except yaml.YAMLError as e:
-                logging.error(f"Error parsing the YAML file: {e}")
-            except Exception as e:
-                logging.error(f"Unexpected error loading the config.yaml file: {e}")
-        else:
-            logging.debug(f"The path {path} does not exist.")
-
-    if yaml_config is None:
-        logging.warning(f"The config.yaml could not be loaded.")
-        yaml_config = {}
-    else:
-        logging.info(f"The config.yaml file was found in {config_path}.")
-
-    for key in required_keys:
-        if key not in yaml_config or yaml_config[key] is None:
-            yaml_config[key] = {}
-
-    env_config = load_env_config(config_path)
     # Merge environment variables and yaml config
     merged_config = merge_yaml_and_env(yaml_config, env_config)
     merged_config = convert_legacy_formats(merged_config)

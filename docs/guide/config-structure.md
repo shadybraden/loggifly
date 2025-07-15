@@ -15,7 +15,6 @@ The `config.yaml` file is divided into four main sections:
 > [!IMPORTANT]
 For the program to function you need to configure:
 >- **at least one container**
->- **at least one notification service (Ntfy, Apprise or custom webhook)**
 >- **at least one keyword / regex pattern (either set globally or per container)**
 >
 >  The rest is optional or has default values.
