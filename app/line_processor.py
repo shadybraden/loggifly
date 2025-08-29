@@ -298,7 +298,9 @@ class LogProcessor:
         If a keyword is found, trigger notification and/or container action.
         """
         keywords_found = []
-        excluded_keywords = self.container_config.excluded_keywords if self.container_config.excluded_keywords else []
+        excluded_keywords = self.container_config.excluded_keywords or []
+        if isinstance(excluded_keywords, str):
+            excluded_keywords = [k.strip() for k in excluded_keywords.split(",") if k.strip()]
         keyword_message_config = {"message": log_line, "container_name": self.container_name}
         for keyword_dict in self.keywords:
             found = self._search_keyword(log_line, keyword_dict)
@@ -306,7 +308,10 @@ class LogProcessor:
                 if keyword_dict.get("template") or keyword_dict.get("json_template"):
                     keyword_message_config["message"] = message_from_template(keyword_dict, log_line)
                 if keyword_dict.get("excluded_keywords"):
-                    excluded_keywords.extend(keyword_dict["excluded_keywords"])
+                    ek = keyword_dict["excluded_keywords"]
+                    if isinstance(ek, str):
+                        ek = [k.strip() for k in ek.split(",") if k.strip()]
+                    excluded_keywords.extend(ek)
                 for key, value in keyword_dict.items():
                     if not keyword_message_config.get(key) and value is not None:
                         keyword_message_config[key] = value
