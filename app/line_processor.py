@@ -324,7 +324,7 @@ class LogProcessor:
                 for keyword in self._get_keywords(excluded_keywords):
                     found = self._search_keyword(log_line, keyword, ignore_keyword_time=True)
                     if found:
-                        self.logger.debug(f"Keyword(s) '{keywords_found}' found in '{self.container_name} but IGNORED because: excluded keyword/regex '{found} was found")
+                        self.logger.debug(f"Keyword(s) '{keywords_found}' found in '{self.container_name}' but IGNORED because: excluded keyword/regex '{found}' was found")
                         return
 
             keyword_message_config["keywords_found"] = keywords_found
