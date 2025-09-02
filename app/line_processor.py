@@ -292,58 +292,116 @@ class LogProcessor:
                     return keyyword
         return None
 
-    def _search_and_send(self, log_line):
-        """
-        Search for keywords/regex in log_line and collect the keyword settings of all found keywords. 
-        If a keyword is found, trigger notification and/or container action.
-        """
-        keywords_found = []
-        excluded_keywords = self.container_config.excluded_keywords or []
-        if isinstance(excluded_keywords, str):
-            excluded_keywords = [k.strip() for k in excluded_keywords.split(",") if k.strip()]
-        keyword_message_config = {"message": log_line, "container_name": self.container_name}
-        for keyword_dict in self.keywords:
-            found = self._search_keyword(log_line, keyword_dict)
-            if found:
-                if keyword_dict.get("template") or keyword_dict.get("json_template"):
-                    keyword_message_config["message"] = message_from_template(keyword_dict, log_line)
-                if keyword_dict.get("excluded_keywords"):
-                    ek = keyword_dict["excluded_keywords"]
-                    if isinstance(ek, str):
-                        ek = [k.strip() for k in ek.split(",") if k.strip()]
-                    excluded_keywords = excluded_keywords + ek
-                for key, value in keyword_dict.items():
-                    if not keyword_message_config.get(key) and value is not None:
-                        keyword_message_config[key] = value
-                keywords_found.append(found)
+def _search_and_send(self, log_line):
+    """
+    Search for keywords/regex in log_line and collect the keyword settings of all found keywords.
+    If a keyword is found, trigger notification and/or container action.
+    """
 
-        # Send notification if any keywords matched
-        if keywords_found:
-            # when a excluded keyword is found, the log line gets ignored and the function returns
-            if excluded_keywords:
-                for keyword in self._get_keywords(excluded_keywords):
-                    found = self._search_keyword(log_line, keyword, ignore_keyword_time=True)
-                    if found:
-                        self.logger.debug(f"Keyword(s) '{keywords_found}' found in '{self.container_name}' but IGNORED because: excluded keyword/regex '{found}' was found")
-                        return
-
-            keyword_message_config["keywords_found"] = keywords_found
-            action = keyword_message_config.get("action")
-            if action is not None:
-                if self.last_action_time is None or (self.last_action_time is not None and time.time() - self.last_action_time >= max(int(self.action_cooldown), 60)):
-                    success = self._container_action(action)
-                    action = (action, success)
-                    self.last_action_time = time.time()
+    def _normalize_excluded_list(raw):
+        """
+        Normalize excluded_keywords input into a list of strings or dicts.
+        Acceptable input:
+          - None -> []
+          - str -> comma-separated -> ['a','b']
+          - list -> elements can be str or dict (kept as-is)
+          - dict -> single dict -> [dict]
+        Returns a list of normalized entries (strings or dicts).
+        """
+        if not raw:
+            return []
+        if isinstance(raw, dict):
+            return [raw]
+        if isinstance(raw, str):
+            return [k.strip() for k in raw.split(",") if k.strip()]
+        if isinstance(raw, list):
+            out = []
+            for item in raw:
+                if isinstance(item, str):
+                    out.extend([k.strip() for k in item.split(",") if k.strip()])
+                elif isinstance(item, dict):
+                    out.append(item)
                 else:
-                    action = None
-            message_config = self.get_message_config(keyword_message_config)
-            attach_logfile = message_config["attach_logfile"]
-            formatted_log_entry ="\n  -----  LOG-ENTRY  -----\n" + ' | ' + '\n | '.join(log_line.splitlines()) + "\n   -----------------------"
-            self.logger.info(f"The following keywords were found in {self.container_name}: {keywords_found}."
-                        + (f" (A Log FIle will be attached)" if attach_logfile else "")
-                        + f"{formatted_log_entry}"
-                        )
-            self._send_message(message_config, attach_logfile=attach_logfile, action=action)
+                    # unknown type, keep stringified
+                    s = str(item).strip()
+                    if s:
+                        out.append(s)
+            return out
+        # fallback
+        s = str(raw).strip()
+        return [s] if s else []
+
+    keywords_found = []
+    # normalize global excluded keywords from container_config
+    global_excluded = _normalize_excluded_list(getattr(self.container_config, "excluded_keywords", None))
+
+    keyword_message_config = {"message": log_line, "container_name": self.container_name}
+
+    # collect combined excluded keywords for this log line without mutating global config
+    combined_excluded = list(global_excluded)  # start with global
+
+    for keyword_dict in self.keywords:
+        found = self._search_keyword(log_line, keyword_dict)
+        if found:
+            if keyword_dict.get("template") or keyword_dict.get("json_template"):
+                keyword_message_config["message"] = message_from_template(keyword_dict, log_line)
+
+            # normalize and merge per-keyword excluded_keywords safely
+            if keyword_dict.get("excluded_keywords"):
+                per = _normalize_excluded_list(keyword_dict["excluded_keywords"])
+                # extend combined_excluded preserving order, avoid duplicates
+                for e in per:
+                    if e not in combined_excluded:
+                        combined_excluded.append(e)
+
+            # copy keyword settings into the message config when not already present
+            for key, value in keyword_dict.items():
+                if not keyword_message_config.get(key) and value is not None:
+                    keyword_message_config[key] = value
+
+            keywords_found.append(found)
+
+    # Send notification if any keywords matched
+    if keywords_found:
+        # when an excluded keyword is found, the log line gets ignored and the function returns
+        if combined_excluded:
+            # Build normalized keyword objects for searching using existing helper
+            excluded_keyword_objs = self._get_keywords(combined_excluded)
+            for keyword in excluded_keyword_objs:
+                found_excluded = self._search_keyword(log_line, keyword, ignore_keyword_time=True)
+                if found_excluded:
+                    self.logger.debug(
+                        f"Keyword(s) '{keywords_found}' found in '{self.container_name}' but IGNORED because: excluded keyword/regex '{found_excluded}' was found"
+                    )
+                    return
+
+        keyword_message_config["keywords_found"] = keywords_found
+        action = keyword_message_config.get("action")
+        if action is not None:
+            if self.last_action_time is None or (
+                self.last_action_time is not None
+                and time.time() - self.last_action_time >= max(int(self.action_cooldown), 60)
+            ):
+                success = self._container_action(action)
+                action = (action, success)
+                self.last_action_time = time.time()
+            else:
+                action = None
+        message_config = self.get_message_config(keyword_message_config)
+        attach_logfile = message_config["attach_logfile"]
+        formatted_log_entry = (
+            "\n  -----  LOG-ENTRY  -----\n"
+            + " | "
+            + "\n | ".join(log_line.splitlines())
+            + "\n   -----------------------"
+        )
+        self.logger.info(
+            f"The following keywords were found in {self.container_name}: {keywords_found}."
+            + (f" (A Log FIle will be attached)" if attach_logfile else "")
+            + f"{formatted_log_entry}"
+        )
+        self._send_message(message_config, attach_logfile=attach_logfile, action=action)
+
 
     def _send_message(self, message_config, attach_logfile=False, action=None):
         """
