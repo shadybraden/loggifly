@@ -321,6 +321,18 @@ class LogProcessor:
         if keywords_found:
             # when a excluded keyword is found, the log line gets ignored and the function returns
             if excluded_keywords:
+                # Ensure excluded_keywords is a flat list of strings (handles being passed as comma-separated env var or list)
+                if isinstance(excluded_keywords, str):
+                    excluded_keywords = [k.strip() for k in excluded_keywords.split(",") if k.strip()]
+                else:
+                    flat = []
+                    for item in excluded_keywords:
+                        if isinstance(item, str) and "," in item:
+                            flat.extend([k.strip() for k in item.split(",") if k.strip()])
+                        else:
+                            flat.append(item)
+                    excluded_keywords = flat
+
                 for keyword in self._get_keywords(excluded_keywords):
                     found = self._search_keyword(log_line, keyword, ignore_keyword_time=True)
                     if found:
