@@ -292,40 +292,59 @@ class LogProcessor:
                     return keyyword
         return None
 
-    def _search_and_send(self, log_line):
-        """
-        Search for keywords/regex in log_line and collect the keyword settings of all found keywords. 
-        If a keyword is found, trigger notification and/or container action.
-        """
-        keywords_found = []
-        excluded_keywords = self.container_config.excluded_keywords or []
-        if isinstance(excluded_keywords, str):
-            excluded_keywords = [k.strip() for k in excluded_keywords.split(",") if k.strip()]
-        keyword_message_config = {"message": log_line, "container_name": self.container_name}
-        for keyword_dict in self.keywords:
-            found = self._search_keyword(log_line, keyword_dict)
-            if found:
-                if keyword_dict.get("template") or keyword_dict.get("json_template"):
-                    keyword_message_config["message"] = message_from_template(keyword_dict, log_line)
-                if keyword_dict.get("excluded_keywords"):
-                    ek = keyword_dict["excluded_keywords"]
-                    if isinstance(ek, str):
-                        ek = [k.strip() for k in ek.split(",") if k.strip()]
-                    excluded_keywords = excluded_keywords + ek
-                for key, value in keyword_dict.items():
-                    if not keyword_message_config.get(key) and value is not None:
-                        keyword_message_config[key] = value
-                keywords_found.append(found)
+def _search_and_send(self, log_line):
+    """
+    Search for keywords/regex in log_line and collect the keyword settings of all found keywords. 
+    If a keyword is found, trigger notification and/or container action.
+    """
+    keywords_found = []
+    # Improved excluded_keywords parsing
+    excluded_keywords = self.container_config.excluded_keywords or []
+    
+    # Ensure excluded_keywords is always a list, handling different input types
+    if isinstance(excluded_keywords, str):
+        # Split by comma, strip whitespace, remove empty strings
+        excluded_keywords = [k.strip() for k in excluded_keywords.split(",") if k.strip()]
+    elif not isinstance(excluded_keywords, list):
+        # Convert to empty list if not a string or list
+        excluded_keywords = []
 
-        # Send notification if any keywords matched
-        if keywords_found:
-            # when a excluded keyword is found, the log line gets ignored and the function returns
-            if excluded_keywords:
-                for keyword in self._get_keywords(excluded_keywords):
-                    found = self._search_keyword(log_line, keyword, ignore_keyword_time=True)
-                    if found:
-                        self.logger.debug(f"Keyword(s) '{keywords_found}' found in '{self.container_name}' but IGNORED because: excluded keyword/regex '{found}' was found")
-                        return
+    keyword_message_config = {"message": log_line, "container_name": self.container_name}
+    
+    for keyword_dict in self.keywords:
+        found = self._search_keyword(log_line, keyword_dict)
+        if found:
+            if keyword_dict.get("template") or keyword_dict.get("json_template"):
+                keyword_message_config["message"] = message_from_template(keyword_dict, log_line)
+            
+            # Improved handling of keyword-specific excluded keywords
+            if keyword_dict.get("excluded_keywords"):
+                ek = keyword_dict["excluded_keywords"]
+                # Ensure ek is also converted to a list
+                if isinstance(ek, str):
+                    ek = [k.strip() for k in ek.split(",") if k.strip()]
+                elif not isinstance(ek, list):
+                    ek = []
+                
+                # Extend the existing excluded_keywords list
+                excluded_keywords.extend(ek)
+
+            # Copy other keyword-specific configurations
+            for key, value in keyword_dict.items():
+                if not keyword_message_config.get(key) and value is not None:
+                    keyword_message_config[key] = value
+            
+            keywords_found.append(found)
+
+    # Send notification if any keywords matched
+    if keywords_found:
+        # Check for excluded keywords
+        if excluded_keywords:
+            for keyword in self._get_keywords(excluded_keywords):
+                found = self._search_keyword(log_line, keyword, ignore_keyword_time=True)
+                if found:
+                    self.logger.debug(f"Keyword(s) '{keywords_found}' found in '{self.container_name}' but IGNORED because: excluded keyword/regex '{found}' was found")
+                    return
 
             keyword_message_config["keywords_found"] = keywords_found
             action = keyword_message_config.get("action")
