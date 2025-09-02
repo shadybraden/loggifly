@@ -311,7 +311,7 @@ class LogProcessor:
                     ek = keyword_dict["excluded_keywords"]
                     if isinstance(ek, str):
                         ek = [k.strip() for k in ek.split(",") if k.strip()]
-                    excluded_keywords.extend(ek)
+                    excluded_keywords = excluded_keywords + ek
                 for key, value in keyword_dict.items():
                     if not keyword_message_config.get(key) and value is not None:
                         keyword_message_config[key] = value
